@@ -11,18 +11,21 @@ npm install      # only needed once (or copy node_modules from dublin-city)
 npm run dev      # then open http://localhost:5173
 ```
 
-Pick a place from the big picture buttons, then drive: hold **GO**, steer with the arrows. The handling is
+Pick a place from the big picture buttons, then drive: hold ▲ (or `↑`), steer with ◀ ▶. The controls are laid out
+as in Dublin Drive: steering on the left, brake and accelerate on the right, round see-through buttons you can
+hold and slide between on a phone or tablet, and the arrow keys on a laptop. The handling is
 Dublin Drive's arcade car made forgiving for a small driver: a gentle top speed, and with the wheel left alone the
 car lines itself up with the road and keeps to the left lane, so holding GO follows a road round its bends. It
-can run onto the verge but never into a hedge or a house: it is steered back onto the road instead. Blue chevrons
+can run onto the verge but never into a hedge or a house: it is steered back onto the road instead. Driving
+straight across a road (out of the drive, over a T-junction) turns the car along it, the way the route goes. Blue chevrons
 on the road and a green arrow over the next junction show the way (the steering button for that turn glows). 🔄
 puts the car back in the middle of the road.
 
 | Laptop | Phone / tablet | |
 | --- | --- | --- |
-| `↑` / `W` (hold) | **GO** (hold) | drive |
-| `↓` / `S` / `Space` (hold) | **STOP** (hold) | brake, then reverse |
-| `←` `→` / `A` `D` (hold) | ⬅ ➡ (hold) | steer |
+| `↑` / `W` (hold) | ▲ (hold) | drive |
+| `↓` / `S` / `Space` (hold) | ▼ (hold) | brake, then reverse |
+| `←` `→` / `A` `D` (hold) | ◀ ▶ (hold) | steer |
 | `R` / `Backspace` | 🔄 | back on the road |
 | `H` | 📯 | horn |
 | `X` | 🚨 | siren and blue lights (traffic slows down) |
@@ -43,8 +46,10 @@ https://seadnad.github.io/drive-kilcullen/.
 The game starts on our drive in Carrighill Lower. The estate (`src/world/estate.js`) is built to match it: white
 dash-rendered bungalows with grey hipped roofs and a gabled porch on white pillars, gravel drives behind beech
 hedges, a tree-lined avenue with grass verges, footpaths and grey lamp posts, and the granite gate pillars, name
-stone and weeping willow at the entrance off the L8007. Our house has the sunroom at its right-hand end and the
-drive that dips down from the road. From Kilcullen it's the R418, left onto the L8007, then left into the estate.
+stone and weeping willow at the entrance off the L8007. Our house is the first on the left after the
+second left turn: longer than its neighbours, with charcoal tiles, a hipped wing at the front right whose corner is
+all glass, the porch beside it, and a big gravel forecourt (with the family cars) at the foot of a drive that dips
+down from the road. From Kilcullen it's the R418, left onto the L8007, then left into the estate and left again.
 For a phone on the same Wi-Fi during development, run `npm run dev -- --host` and open the address it prints.
 
 ## How the map is made
@@ -61,8 +66,10 @@ and the named places), converted to metres around Kilcullen bridge. `node tools/
   route planner.
 
 Everything else (the estate, houses, shopfronts, hedges, trees, cows and sheep, the Naas edge houses and the
-country bungalows) is built in code at load time. Only the Garda i40 model comes from a file, copied from Dublin Drive
-(`public/models/garda.glb`), along with its livery code and the engine and siren sounds.
+country bungalows) is built in code at load time. The car models come from Dublin Drive: the Garda i40
+(`public/models/garda.glb`, with its livery code), and the hatchback and coupé (`hatch.glb`, `coupe.glb`) for the
+traffic and the cars at home, along with the engine and siren sounds. Little Brew and Kidz Akademy get proper
+shopfronts (pilasters, fascia, display windows) in their real colours.
 
 ## Layout
 

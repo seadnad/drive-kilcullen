@@ -242,6 +242,8 @@ const outEdges = edges.map((e) => {
 });
 
 // ---------------------------------------------------------------- buildings, water, areas
+// home: the house the family picked out on the map (the first on the left past the estate junction)
+const OUR_HOUSE = 42;
 const BUILD_R = 1150;
 const outBuildings = buildings.filter((b) => {
   const c = b.pts[0];
@@ -249,7 +251,7 @@ const outBuildings = buildings.filter((b) => {
 }).map((b) => {
   const t = b.tags;
   const pts = b.pts.slice(0, -1).map(G); // closed rings repeat the first point
-  return { pts, kind: t.building, name: t.name || '', amenity: t.amenity || t.shop || t.tourism || '', levels: Number(t['building:levels']) || 0, estate: near(b.pts[0], ESTATE_C, 260) ? 1 : 0, ours: b === buildings[41] ? 1 : 0 };
+  return { pts, kind: t.building, name: t.name || '', amenity: t.amenity || t.shop || t.tourism || '', levels: Number(t['building:levels']) || 0, estate: near(b.pts[0], ESTATE_C, 260) ? 1 : 0, ours: b === buildings[OUR_HOUSE] ? 1 : 0 };
 });
 const outWater = [], outAreas = [];
 for (const o of other) {
@@ -264,7 +266,6 @@ for (const o of other) {
   }
 }
 // home: the house the family picked out on the map (building 41 in the pull), and where the estate road leaves the L8007
-const OUR_HOUSE = 41; // (also flagged as `ours` on the building above)
 {
   const pts = buildings[OUR_HOUSE].pts.slice(0, -1);
   POI['Our House'] = [pts.reduce((a, p) => a + p[0], 0) / pts.length, pts.reduce((a, p) => a + p[1], 0) / pts.length];

@@ -7,15 +7,15 @@ import { createPipeline } from './render/pipeline.js';
 import { createContactShadows } from './render/contact.js';
 import { buildWorld, inTown } from './world/world.js';
 import { buildEstate, home, groundY } from './world/estate.js';
-import { buildLandmarks } from './world/landmarks.js';
+import { buildLandmarks, shops } from './world/landmarks.js';
 import { DESTINATIONS, SIGNS } from './world/places.js';
 import world, { edges, nodes, nearest, poi, plan, sample, endNode } from './game/graph.js';
 import { Car, CAR_PARAMS } from './game/car.js';
-import { Traffic, makeHatch } from './game/traffic.js';
+import { Traffic, makeHatch, dimLamps } from './game/traffic.js';
 import { Guide } from './game/guide.js';
 import { Sound } from './game/audio.js';
 import { loadCar } from './game/models.js';
-import { roadGrid } from './world/common.js';
+import { roadGrid, inEstate } from './world/common.js';
 import { UI, MiniMap } from './ui/ui.js';
 
 const MOBILE = matchMedia('(pointer: coarse)').matches;
@@ -76,17 +76,38 @@ car.extraRoads = home ? home.driveways : [];
 car.y = groundY(car.pos.x, car.pos.z);
 // what the traffic sees of the player
 const me = { vis: { x: car.pos.x, z: car.pos.z, h: car.heading }, v: 0 };
+// the family cars parked on the gravel at home
+const parked = home ? home.parked.map((p) => ({ vis: { x: p.x, z: p.z, h: p.h }, ...p })) : [];
 car.dynamic = (x, z, r) => {
   let px = 0, pz = 0, hit = false;
-  for (const c of traffic.cars) {
+  for (const c of [...traffic.cars, ...parked]) {
     const dx = x - c.vis.x, dz = z - c.vis.z, d = Math.hypot(dx, dz);
     if (d < r + 1.2 && d > 0.01) { const k = (r + 1.2 - d); px += (dx / d) * k; pz += (dz / d) * k; hit = true; }
   }
   return hit ? { x: px, z: pz } : null;
 };
+// which way the route goes from here (a point ~15 m along it), for the car's verge handling
+const ENTRANCE = poi['Estate Entrance'];
+car.prefer = () => {
+  // no destination: in the estate, the way out of it
+  if (!route || route.pts.length < 3) return !goal && ENTRANCE && inEstate(car.pos.x, car.pos.z, 30) ? { x: ENTRANCE[0] - car.pos.x, z: ENTRANCE[1] - car.pos.z } : null;
+  let acc = 0;
+  for (let k = 1; k < route.pts.length; k++) {
+    acc += Math.hypot(route.pts[k][0] - route.pts[k - 1][0], route.pts[k][1] - route.pts[k - 1][1]);
+    if (acc > 15) return { x: route.pts[k][0] - car.pos.x, z: route.pts[k][1] - car.pos.z };
+  }
+  return null;
+};
 let carMesh = await loadCar('garda').catch(() => null);
 if (!carMesh) carMesh = makeHatch(0xffffff);
 scene.add(carMesh);
+for (const [i, p] of parked.entries()) {
+  const m = (await loadCar(i ? 'coupe' : 'hatch').catch(() => null)) || makeHatch(p.colour);
+  if (m.userData.setPaint) m.userData.setPaint({ color: p.colour, metal: 0.45, rough: 0.3 });
+  dimLamps(m, 0);
+  m.position.set(p.x, groundY(p.x, p.z), p.z); m.rotation.y = p.h; scene.add(m);
+}
+traffic.upgrade();
 document.getElementById('loading').remove();
 
 // ---------------------------------------------------------------- state
@@ -177,6 +198,7 @@ const camPos = new THREE.Vector3(), camLook = new THREE.Vector3();
 let first = true, mapT = 0, time = 0, wasOnBridge = false, camHeading = car.heading;
 // at the start the camera looks at the house from the road; it swings in behind the car once it moves
 let intro = !!home;
+let viewOverride = null; // testing: a fixed camera [x, y, z, lookX, lookY, lookZ]
 
 function frame() {
   requestAnimationFrame(frame);
@@ -265,18 +287,21 @@ function step(dt) {
   if (intro) {
     if (Math.abs(car.speed) > 1) intro = false;
     else {
-      // from the footpath across the road, low enough to see the drive dip down to the house
-      const p = home.world(home.drive.s + 6, home.plot.tMax + 12), c = home.world(0, 2);
-      want.set(p[0], 3.4, p[1]); at.set(c[0], -0.8, c[1]);
+      // up over the end of the drive, like the drone photo: the car on the gravel, the house behind it
+      const I = home.intro;
+      const back = portrait ? 9 : 0;
+      want.set(I.p[0] + home.fx * back, I.y + back * 0.6, I.p[1] + home.fz * back); at.set(I.at[0], -home.DIP + 1.2, I.at[1]);
     }
   }
   const k = first ? 1 : 1 - Math.exp(-dt * 5);
   camPos.lerp(want, k); camLook.lerp(at, first ? 1 : 1 - Math.exp(-dt * 8)); first = false;
   camera.position.copy(camPos); camera.lookAt(camLook);
+  if (viewOverride) { camera.position.set(...viewOverride.slice(0, 3)); camera.lookAt(...viewOverride.slice(3)); }
 
   // sun, shadows and sky follow the car; soft shadows under every car
   atmo.update(time, carMesh.position, { x: fx, z: fz });
   const shadows = [{ x: car.pos.x, y: car.y, z: car.pos.z, h: car.heading, w: 2.5, l: 5.3 }];
+  for (const p of parked) shadows.push({ x: p.x, y: groundY(p.x, p.z), z: p.z, h: p.h, w: 2.3, l: 4.6 });
   for (const c of traffic.cars) shadows.push({ x: c.vis.x, y: 0, z: c.vis.z, h: c.vis.h, w: c.kind === 'tractor' ? 2.6 : 2.4, l: c.kind === 'van' ? 6 : c.kind === 'tractor' ? 4.6 : 4.8 });
   contact.update(shadows);
 
@@ -337,8 +362,8 @@ const place = (x, z, h) => { car.teleport(x, z, h); car.y = groundY(x, z); camHe
 const teleport = (id, back = 30) => {
   const g = DEST.get(id), e = g.spot.e, s = Math.max(0, g.spot.s - back), q = sample(e, 1, s);
   car.teleport(q.x + q.dz * lane(e), q.z - q.dx * lane(e), Math.atan2(q.dx, q.dz)); car.y = groundY(car.pos.x, car.pos.z);
-  camHeading = car.heading; first = true; ui.hidePicker();
+  camHeading = car.heading; first = true; intro = false; ui.hidePicker();
 };
-window.kd = { get arriving() { return arriving; }, sim, drive, teleport, place, poi, cam: (m) => { camMode = m; first = true; }, car, traffic, pick: (id) => pick(DESTINATIONS.find((d) => d.id === id) || null), ui, scene, camera, DEST, home };
+window.kd = { view: (v) => { viewOverride = v; }, shops, get arriving() { return arriving; }, sim, drive, teleport, place, poi, cam: (m) => { camMode = m; first = true; }, car, traffic, pick: (id) => pick(DESTINATIONS.find((d) => d.id === id) || null), ui, scene, camera, DEST, home };
 console.log(`Kilcullen Drive ready: ${edges.length} roads, ${nodes.length} junctions${inTown(car.pos.x, car.pos.z) ? '' : ', starting at home'}`);
 frame();

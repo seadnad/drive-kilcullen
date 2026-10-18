@@ -38,6 +38,7 @@ export class Car {
     this.extraRoads = []; // driveways: { a:[x,z], b:[x,z], half }
     this.dynamic = null;  // (x, z, r) => push { x, z } from traffic
     this.offRoad = false;
+    this.prefer = null;   // () => { x, z } the way the route wants to go, or null
   }
 
   hold() { this.vel.x = this.vel.z = 0; this.speed = 0; this.yawRate = 0; }
@@ -140,7 +141,18 @@ export class Car {
         // past the end of a road (the way along it leads further out) or nose-on to the edge: swing right round;
         // otherwise run along the road, aiming a little back toward the middle
         const pastEnd = tx * nx + tz * nz > 0.3;
-        if (headOn > 0.8 || pastEnd) { tx = -nx; tz = -nz; } else { tx -= nx * 0.35; tz -= nz * 0.35; }
+        if (pastEnd) { tx = -nx; tz = -nz; } // a dead end: turn round
+        else {
+          if (headOn > 0.6) {
+            // straight across a road into the far verge (out of a drive, over a T-junction): turn along the road,
+            // the way the route goes, or left if there is no route; never back the way we came
+            const sx = r2.dx, sz = r2.dz, along = sx * nfx + sz * nfz;
+            const pref = this.prefer ? this.prefer() : null;
+            let sgn = Math.abs(along) > 0.25 ? Math.sign(along) : pref ? Math.sign(sx * pref.x + sz * pref.z) || 1 : Math.sign(sx * nfz - sz * nfx) || 1;
+            tx = sx * sgn; tz = sz * sgn;
+          }
+          tx -= nx * 0.35; tz -= nz * 0.35;
+        }
         let dh = Math.atan2(tx, tz) - this.heading; dh = Math.atan2(Math.sin(dh), Math.cos(dh));
         if (Math.abs(this.speed) > 0.2 || input.throttle > 0) this.heading += dh * Math.min(1, dt * (2 + headOn * 6));
       }

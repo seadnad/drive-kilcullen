@@ -26,22 +26,20 @@ button { font-family: var(--font); cursor: pointer; border: none; }
 .tool.on { background: #2f6bff; }
 .tool.where { width: auto; padding: 0 16px; font-size: 20px; font-weight: 800; gap: 6px; display: flex; background: #ffd23f; }
 
-/* ---------- driving controls */
-.pad { position: fixed; bottom: max(14px, env(safe-area-inset-bottom)); display: flex; gap: 14px; align-items: flex-end; z-index: 5; }
-.pad.left { left: max(14px, env(safe-area-inset-left)); }
-.pad.right { right: max(14px, env(safe-area-inset-right)); }
-.big { border-radius: 50%; box-shadow: var(--shadow); display: grid; place-items: center; color: #fff; font-weight: 900; transition: transform 0.08s, box-shadow 0.08s, filter 0.2s; }
-.big:active, .big.held { transform: translateY(5px) scale(0.97); box-shadow: 0 1px 0 rgba(0, 0, 0, 0.2); }
-.turn { width: 104px; height: 104px; background: #3e63dd; font-size: 54px; }
-.turn.dim { filter: grayscale(0.85) opacity(0.55); }
-.turn.hint { animation: glow 1s ease-in-out infinite; }
-@keyframes glow { 50% { box-shadow: 0 0 0 10px rgba(255, 210, 63, 0.75), var(--shadow); } }
-.stop { width: 92px; height: 92px; background: #e5484d; font-size: 20px; line-height: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-.stop small { font-size: 12px; opacity: 0.85; font-weight: 700; }
+/* ---------- driving controls (as in Dublin Drive: round, see-through, touch screens only) */
+.touch { display: none; }
+.touch.on { display: block; }
+.touch .pad { position: fixed; z-index: 5; bottom: max(18px, env(safe-area-inset-bottom)); display: flex; gap: 14px; align-items: flex-end; }
+.touch .pad.left { left: max(18px, env(safe-area-inset-left)); }
+.touch .pad.right { right: max(18px, env(safe-area-inset-right)); }
+.touch button { width: 84px; height: 84px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.6); background: rgba(20, 28, 26, 0.42); color: #fff; font-size: 30px; touch-action: none; -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; transition: background 0.1s, transform 0.08s; }
+.touch button.gas { width: 100px; height: 100px; background: rgba(22, 155, 98, 0.6); font-size: 36px; }
+.touch button.down { background: rgba(255, 136, 62, 0.8); border-color: #fff; transform: scale(0.96); }
+.touch button.hint { animation: glow 1s ease-in-out infinite; }
+@keyframes glow { 50% { box-shadow: 0 0 0 9px rgba(255, 210, 63, 0.8); border-color: #ffd23f; } }
+.touch button.wiggle { animation: wiggle 1.2s ease-in-out infinite; }
+@keyframes wiggle { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-6deg) scale(1.05); } 75% { transform: rotate(6deg) scale(1.05); } }
 .spacer { width: 1px; }
-.go { width: 136px; height: 136px; background: #30a46c; font-size: 38px; }
-.go.wiggle { animation: wiggle 1.2s ease-in-out infinite; }
-@keyframes wiggle { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-6deg) scale(1.04); } 75% { transform: rotate(6deg) scale(1.04); } }
 .keys { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); background: rgba(255, 255, 255, 0.85); padding: 6px 14px; border-radius: 12px; font-size: 14px; font-weight: 700; z-index: 4; white-space: nowrap; }
 .keys kbd { background: #fff; border: 1px solid #bbb; border-bottom-width: 3px; border-radius: 6px; padding: 1px 6px; font-family: inherit; }
 
@@ -51,6 +49,7 @@ button { font-family: var(--font); cursor: pointer; border: none; }
 
 /* ---------- speed dial */
 .speed { position: fixed; z-index: 4; bottom: 170px; right: max(28px, env(safe-area-inset-right)); background: rgba(255, 255, 255, 0.9); border-radius: 14px; padding: 4px 12px; font-weight: 900; font-size: 22px; box-shadow: var(--shadow); }
+body:not(.touchy) .speed { bottom: 58px; }
 .speed small { font-size: 12px; opacity: 0.6; }
 
 /* ---------- toasts and banners */
@@ -87,9 +86,8 @@ button { font-family: var(--font); cursor: pointer; border: none; }
   .goal { font-size: 15px; max-width: 40vw; }
   .goal .em { width: 36px; height: 36px; font-size: 22px; }
   .stars { font-size: 20px; min-width: 70px; }
-  .turn { width: 78px; height: 78px; font-size: 40px; }
-  .stop { width: 74px; height: 74px; font-size: 18px; }
-  .go { width: 112px; height: 112px; font-size: 30px; }
+  .touch button { width: 74px; height: 74px; font-size: 26px; }
+  .touch button.gas { width: 88px; height: 88px; }
   .minimap { width: 120px; height: 120px; top: 70px; border-width: 4px; }
   .speed { bottom: 140px; font-size: 18px; }
   .keys { display: none; }
@@ -100,10 +98,7 @@ button { font-family: var(--font); cursor: pointer; border: none; }
 }
 @media (max-width: 520px) {
   .goal { display: none; }
-  .pad.right { flex-direction: column; align-items: center; gap: 10px; }
-  .stop { width: 66px; height: 66px; font-size: 15px; }
-  .turn { width: 72px; height: 72px; font-size: 36px; }
-  .pad.left { gap: 10px; }
+  .touch .pad { gap: 10px; }
   .minimap { left: max(12px, env(safe-area-inset-left)); right: auto; top: 66px; width: 112px; height: 112px; }
   .speed { bottom: auto; top: 186px; left: max(14px, env(safe-area-inset-left)); right: auto; font-size: 16px; }
   .toast { top: 130px; font-size: 19px; }

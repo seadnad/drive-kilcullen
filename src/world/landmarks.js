@@ -6,7 +6,7 @@ import world, { edges, nearest, sample } from '../game/graph.js';
 import { SIGNS, DESTINATIONS } from './places.js';
 import { buildingFor, inTown, addWalls, gableRoof } from './world.js';
 import { Soup } from './geom.js';
-import { facadeTexture, roofTexture } from './textures.js';
+import { brickTexture, facadeTexture, roofTexture } from './textures.js';
 import { centroid, obb, offsets, polyArea } from './geom.js';
 import { signTexture, badgeTexture } from './textures.js';
 
@@ -45,6 +45,72 @@ function postSign(text, opts, x, z, nx, nz, height = 1.4, maxW = 5) {
   return g;
 }
 
+// A traditional Irish shopfront on a wall: two fluted pilasters with capitals carrying a deep fascia with the
+// name, a big display window (or several) on a stall riser, and a glazed door. f: { x, z, nx, nz, len } on the wall.
+function shopfront(f, s) {
+  const sp = s.shop, g = new THREE.Group();
+  const frame = std({ color: sp.frame, roughness: 0.45 }), glassMat = new THREE.MeshPhysicalMaterial({ color: 0x9fb4c0, roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.32 });
+  const inside = std({ color: 0xf0dcb8, emissive: 0xffc98a, emissiveIntensity: 0.28, roughness: 0.9 });
+  const W = Math.min(sp.width || 6, Math.max(3.4, f.len * 0.96)), H = 3.4;
+  const add = (w, h, d, mat, x, y, z) => { const m = box(w, h, d, mat, x, y, z); g.add(m); return m; };
+  // pilasters, capitals and plinth blocks
+  for (const x of [-W / 2, W / 2]) {
+    add(0.42, H - 0.2, 0.22, frame, x, (H - 0.2) / 2, 0.11);
+    add(0.56, 0.32, 0.32, frame, x, H - 0.2, 0.16);
+    add(0.5, 0.35, 0.28, frame, x, 0.18, 0.14);
+    for (const k of [-0.1, 0, 0.1]) add(0.03, H - 1.1, 0.02, std({ color: new THREE.Color(sp.frame).multiplyScalar(0.8) }), x + k, (H - 0.2) / 2, 0.23); // flutes
+  }
+  // fascia: the sign itself, with a cornice above
+  const { texture, aspect } = signTexture(s.text, s);
+  const fh = 0.85, fw = W - 0.5;
+  add(W + 0.3, fh + 0.1, 0.3, frame, 0, H + fh / 2 - 0.15, 0.15);
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(Math.min(fw, fh * aspect * 1.1), Math.min(fh, fw / aspect / 1.1)), std({ map: texture, roughness: 0.5 }));
+  // fill the fascia with the sign's own background, then the lettering on top
+  const bgPanel = new THREE.Mesh(new THREE.PlaneGeometry(fw, fh * 0.92), std({ color: s.bg, roughness: 0.5 }));
+  bgPanel.position.set(0, H + fh / 2 - 0.15, 0.305); g.add(bgPanel);
+  sign.position.set(0, H + fh / 2 - 0.15, 0.31); g.add(sign);
+  add(W + 0.6, 0.16, 0.42, frame, 0, H + fh + 0.02, 0.2);
+  // windows and the door
+  const n = sp.windows || 1, doorW = 1.1, gap = 0.18, inner = W - 0.42;
+  const winW = (inner - doorW - gap * (n + 1)) / n;
+  let x = -inner / 2 + gap;
+  const slots = [];
+  for (let i = 0; i < n; i++) { slots.push(['w', x + winW / 2]); x += winW + gap; if (i === 0) { slots.push(['d', x + doorW / 2]); x += doorW + gap; } }
+  for (const [k, cx] of slots) {
+    if (k === 'w') {
+      add(winW, 0.62, 0.2, frame, cx, 0.31, 0.1); // stall riser
+      const gm = new THREE.Mesh(new THREE.PlaneGeometry(winW - 0.24, H - 1.05), glassMat); gm.position.set(cx, 0.62 + (H - 1.05) / 2 + 0.06, 0.06); gm.renderOrder = 2; g.add(gm);
+      // the lit room behind, a shelf, and (at Little Brew) a bunch of yellow balloons in the window
+      const room = new THREE.Mesh(new THREE.PlaneGeometry(winW - 0.24, H - 1.05), inside); room.position.set(cx, 0.62 + (H - 1.05) / 2 + 0.06, 0.012); g.add(room);
+      add(winW - 0.4, 0.05, 0.05, std({ color: 0xffffff }), cx, 1.55, 0.03);
+      for (let i = 0; i < 3; i++) { const l = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), std({ color: 0xfff1c9, emissive: 0xffd27a, emissiveIntensity: 1.2 })); l.position.set(cx + (i - 1) * winW * 0.3, H - 0.55, 0.035); g.add(l); }
+      if (sp.flowers) for (let i = 0; i < 9; i++) { const b = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 10), std({ color: i % 4 === 3 ? 0x222222 : 0xffd400, roughness: 0.3 })); b.position.set(cx - winW * 0.32 + (i % 3) * 0.26 + (i > 5 ? 0.1 : 0), 0.85 + Math.floor(i / 3) * 0.24, 0.02); b.scale.z = 0.25; g.add(b); }
+      add(winW, 0.12, 0.16, frame, cx, 0.68, 0.12); add(winW, 0.14, 0.16, frame, cx, H - 0.28, 0.12);
+      for (const e of [-1, 1]) add(0.12, H - 0.9, 0.16, frame, cx + e * (winW / 2 - 0.06), (H - 0.9) / 2 + 0.6, 0.12);
+    } else {
+      const dg = new THREE.Mesh(new THREE.PlaneGeometry(doorW - 0.3, H - 1.0), glassMat); dg.position.set(cx, (H - 1.0) / 2 + 0.1, 0.04); dg.renderOrder = 2; g.add(dg);
+      for (const e of [-1, 1]) add(0.15, H - 0.3, 0.16, frame, cx + e * (doorW / 2 - 0.07), (H - 0.3) / 2, 0.1);
+      add(doorW, 0.15, 0.16, frame, cx, H - 0.25, 0.1); add(doorW - 0.2, 0.12, 0.08, frame, cx, 0.2, 0.06);
+      // a warm glow inside
+      const lit = new THREE.Mesh(new THREE.PlaneGeometry(doorW - 0.4, H - 1.2), std({ color: 0xffe2a8, emissive: 0xffc77a, emissiveIntensity: 0.35 })); lit.position.set(cx, (H - 1.0) / 2 + 0.1, 0.01); g.add(lit);
+    }
+  }
+  // window boxes of petunias under the first-floor windows
+  if (sp.flowers) {
+    const pink = ['#c2185b', '#7b1fa2', '#e91e63', '#9c27b0', '#ffffff'].map((c) => std({ color: c, roughness: 0.8 }));
+    const leaf = std({ color: 0x2f6b2a, roughness: 0.9 });
+    for (const bx of [-W * 0.3, W * 0.3]) {
+      add(1.5, 0.25, 0.3, std({ color: 0x8a3b1e }), bx, H + fh + 0.85, 0.2);
+      for (let i = 0; i < 14; i++) {
+        const b = new THREE.Mesh(new THREE.IcosahedronGeometry(0.13 + (i % 3) * 0.03, 0), i % 4 === 0 ? leaf : pink[i % pink.length]);
+        b.position.set(bx - 0.65 + (i / 13) * 1.3, H + fh + 1.03 + ((i * 7) % 5) * 0.03 - (i % 5 === 0 ? 0.25 : 0), 0.25 + ((i * 3) % 4) * 0.05); g.add(b);
+      }
+    }
+  }
+  g.position.set(f.x + f.nx * 0.02, 0, f.z + f.nz * 0.02); g.rotation.y = Math.atan2(f.nx, f.nz);
+  return g;
+}
+
 // the facade of building `info` that faces the road nearest to point (px, pz): where to hang a sign
 function facadeFor(info, px, pz) {
   const near = nearest(px, pz);
@@ -69,6 +135,7 @@ function facadeFor(info, px, pz) {
   return best;
 }
 
+export const shops = {}; // where each shopfront went: { x, z, nx, nz }
 export function buildLandmarks(scene, buildings) {
   const g = new THREE.Group(); scene.add(g);
   const P = world.poi;
@@ -80,7 +147,9 @@ export function buildLandmarks(scene, buildings) {
     const [px, pz] = P[name];
     const bi = buildingFor(name), info = bi >= 0 ? buildings[bi] : null;
     const f = info && facadeFor(info, px, pz);
-    if (f) {
+    if (f && s.shop) {
+      g.add(shopfront(f, s)); shops[name] = f;
+    } else if (f) {
       g.add(board(s.text, s, f.x, Math.min(3.1, info.h - 1.8), f.z, f.nx, f.nz, Math.max(2.4, Math.min(9, f.len * 0.95)), s.sub ? 1.5 : 1.15));
     } else {
       const n = nearest(px, pz), rp = sample(n.e, 1, n.s);
@@ -154,35 +223,41 @@ export function buildLandmarks(scene, buildings) {
     const play = playground(['#ff5d5d', '#ffd23f', '#3fa7ff', '#5ad15a']);
     play.position.set(ox, 0, oz); play.rotation.y = Math.atan2(nx, nz); g.add(play);
     if (!info) {
-      // no footprint survived the squeeze: build a bright single-storey crèche set back from the road
+      // no footprint survived the squeeze: build it as it is, a two-storey red brick building right on the footpath
       const fx = rp.x - kx, fz = rp.z - kz, fl = Math.hypot(fx, fz) || 1; // front faces the road
       const ux = fx / fl, uz = fz / fl, ax = -uz, az = ux;
-      const cx = rp.x - ux * (n.e.w / 2 + 2.4 + 8), cz = rp.z - uz * (n.e.w / 2 + 2.4 + 8);
-      const W = 18, D = 10, P = (a, b) => [cx + ax * a + ux * b, cz + az * a + uz * b];
+      const W = 15, D = 9, H = SIGNS['Kidz Akademy'].h;
+      const cx = rp.x - ux * (n.e.w / 2 + 3 + D / 2), cz = rp.z - uz * (n.e.w / 2 + 3 + D / 2);
+      const P = (a, b) => [cx + ax * a + ux * b, cz + az * a + uz * b];
       let pts = [P(-W / 2, D / 2), P(W / 2, D / 2), P(W / 2, -D / 2), P(-W / 2, -D / 2)];
       let area = 0; for (let i = 0; i < 4; i++) { const a = pts[i], b = pts[(i + 1) % 4]; area += a[0] * b[1] - b[0] * a[1]; }
       if (area > 0) pts.reverse();
       const walls = new Soup(), roofs = new Soup();
-      addWalls(walls, pts, 4.2, [1, 0.82, 0.25]);
-      gableRoof(walls, roofs, { c: [cx, cz], ux: ax, uz: az, long: W, short: D }, 4.2, [0.56, 0.31, 0.78], [1, 0.82, 0.25]);
-      const wm = new THREE.Mesh(walls.geometry(), new THREE.MeshStandardMaterial({ map: facadeTexture(), vertexColors: true, roughness: 0.9 }));
+      addWalls(walls, pts, H, [1, 1, 1]);
+      gableRoof(walls, roofs, { c: [cx, cz], ux: ax, uz: az, long: W, short: D }, H, [0.42, 0.44, 0.47], [1, 1, 1]);
+      const bt = brickTexture();
+      const wm = new THREE.Mesh(walls.geometry(), new THREE.MeshStandardMaterial({ map: bt, normalMap: bt.userData.normal, vertexColors: true, roughness: 0.92 }));
       const rm = new THREE.Mesh(roofs.geometry(), new THREE.MeshStandardMaterial({ map: roofTexture(), vertexColors: true, roughness: 0.8 }));
       for (const m of [wm, rm]) { m.castShadow = m.receiveShadow = true; g.add(m); }
-      const s = SIGNS['Kidz Akademy'];
-      g.add(board(s.text, s, cx + ux * (D / 2), 2.6, cz + uz * (D / 2), ux, uz, 9, 1.5));
-      // big painted blocks by the door
-      ['#e5484d', '#3e63dd', '#30a46c'].forEach((c, i) => g.add(box(0.9, 0.9, 0.9, std({ color: c }), cx + ux * (D / 2 + 1.2) + ax * (4 + i * 1.1), 0.45 + (i === 1 ? 0.9 : 0), cz + uz * (D / 2 + 1.2) + az * (4 + i * 1.1))));
-      ox = cx - ux * 14; oz = cz - uz * 14;
-      play.position.set(cx + ax * 14, 0, cz + az * 14);
+      shops['Kidz Akademy'] = { x: cx + ux * (D / 2), z: cz + uz * (D / 2), nx: ux, nz: uz, len: W };
+      g.add(shopfront(shops['Kidz Akademy'], SIGNS['Kidz Akademy']));
+      // the grey stone house next door, as in the photo
+      {
+        const sx = cx + ax * (W / 2 + 4.8) - ux * 0.5, sz = cz + az * (W / 2 + 4.8) - uz * 0.5, sw = 9, sd = D - 1;
+        const Q = (a, b) => [sx + ax * a + ux * b, sz + az * a + uz * b];
+        let q = [Q(-sw / 2, sd / 2), Q(sw / 2, sd / 2), Q(sw / 2, -sd / 2), Q(-sw / 2, -sd / 2)];
+        let ar = 0; for (let i = 0; i < 4; i++) { const a = q[i], b = q[(i + 1) % 4]; ar += a[0] * b[1] - b[0] * a[1]; }
+        if (ar > 0) q.reverse();
+        const sw2 = new Soup(), sr = new Soup(), col = [0.66, 0.64, 0.6];
+        addWalls(sw2, q, 5.8, col);
+        gableRoof(sw2, sr, { c: [sx, sz], ux: ax, uz: az, long: sw, short: sd }, 5.8, [0.4, 0.42, 0.45], col);
+        const ft = facadeTexture();
+        const m1 = new THREE.Mesh(sw2.geometry(), new THREE.MeshStandardMaterial({ map: ft, normalMap: ft.userData.normal, vertexColors: true, roughness: 0.95 }));
+        const m2 = new THREE.Mesh(sr.geometry(), new THREE.MeshStandardMaterial({ map: roofTexture(), vertexColors: true, roughness: 0.8 }));
+        for (const m of [m1, m2]) { m.castShadow = m.receiveShadow = true; g.add(m); }
+      }
+      play.position.set(cx - ux * 16, 0, cz - uz * 16);
     }
-    // rainbow arch over the gate
-    const arch = new THREE.Group();
-    ['#e5484d', '#f76b15', '#ffd23f', '#30a46c', '#3e63dd', '#8e4ec6'].forEach((c, i) => {
-      const t = new THREE.Mesh(new THREE.TorusGeometry(3.2 - i * 0.22, 0.11, 6, 24, Math.PI), std({ color: c }));
-      arch.add(t);
-    });
-    const gx = rp.x - nx * (n.e.w / 2 + 2.6), gz = rp.z - nz * (n.e.w / 2 + 2.6);
-    arch.position.set(gx, 0, gz); arch.rotation.y = Math.atan2(nx, nz) + Math.PI / 2; g.add(arch);
   }
 
   // ---------------------------------------------------------------- the playground in the town park

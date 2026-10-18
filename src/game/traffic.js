@@ -4,6 +4,15 @@ import * as THREE from 'three';
 import { RailCar } from './driver.js';
 import { edges, nearest } from './graph.js';
 import { rng } from '../world/textures.js';
+import { loadCar } from './models.js';
+
+// daytime: lamps off on a parked car (k = 0), a soft glow on a moving one
+export function dimLamps(m, k) {
+  m.traverse((o) => { if (o.isMesh && o.material && /headlight|drl|taillight|indicator|reverse/.test(o.material.name || '')) o.material.emissiveIntensity *= k; });
+}
+
+// everyday Irish car colours for the modelled cars
+export const REAL_COLOURS = [0xb9bdc3, 0x1b1d22, 0xf1f1ee, 0x4a4e55, 0x1f2f55, 0x9b1c22, 0x2a5aa8, 0x70757c, 0xd9d6cf];
 
 const r = rng(77);
 const std = (o) => new THREE.MeshStandardMaterial({ roughness: 0.5, ...o });
@@ -77,6 +86,20 @@ export class Traffic {
     }
   }
 
+  // swap the simple placeholder cars for the proper hatchback and coupé models once they have loaded
+  async upgrade() {
+    let k = 0;
+    for (const car of this.cars) {
+      if (car.kind !== 'hatch') continue;
+      const m = await loadCar(k % 3 === 2 ? 'coupe' : 'hatch').catch(() => null);
+      if (!m) return;
+      if (m.userData.setPaint) m.userData.setPaint({ color: REAL_COLOURS[(k * 5) % REAL_COLOURS.length], metal: 0.4, rough: 0.32 });
+      dimLamps(m, 0.35);
+      m.position.copy(car.mesh.position); m.rotation.copy(car.mesh.rotation);
+      this.scene.remove(car.mesh); this.scene.add(m); car.mesh = m; k++;
+    }
+  }
+
   // put a car back on a road some way from the player (but not right in front of them)
   respawn(car, player) {
     for (let tries = 0; tries < 30; tries++) {
@@ -112,6 +135,7 @@ export class Traffic {
       car.update(dt, { throttle: 1, brake: 0, vmax, limit: unstick(car, followLimit(car, all), dt) });
       car.mesh.position.set(car.vis.x, 0, car.vis.z);
       car.mesh.rotation.y = car.vis.h;
+      if (car.mesh.userData.update) car.mesh.userData.update(car.v, dt, 0);
     }
   }
 }

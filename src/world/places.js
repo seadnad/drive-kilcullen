@@ -16,9 +16,11 @@ export const DESTINATIONS = [
 
 // Signs on buildings: text and colours. `wall` repaints the building the place is in.
 export const SIGNS = {
-  'Little Brew Cafe': { text: 'Little Brew', sub: 'coffee  ·  treats', bg: '#0f6f70', fg: '#ffffff', border: '#f2d16b', wall: '#f6f0e4', font: '"Trebuchet MS", Arial, sans-serif' },
+  // white render, a yellow timber shopfront and a white fascia in black serif capitals, window boxes above
+  'Little Brew Cafe': { text: 'LITTLE BREW CAFE.', sub: 'KILCULLEN', bg: '#f8f7f2', fg: '#1d1d1d', border: '#f2b705', wall: '#f4f3ee', font: 'Georgia, "Times New Roman", serif', shop: { frame: '#f2b705', width: 7, flowers: true } },
   'An Tearmann': { text: 'An Tearmann', sub: 'café', bg: '#6b3a1f', fg: '#fbe9c9', border: '#e0a94e', wall: '#f3dfb8' },
-  'Kidz Akademy': { text: 'Kidz Akademy', bg: '#8e4ec6', fg: '#fff35c', border: '#ffffff', wall: '#ffd23f', h: 4.6, roof: '#8e4ec6', font: '"Comic Sans MS", "Trebuchet MS", sans-serif', sub: 'crèche & preschool' },
+  // a two-storey red brick building on the footpath, red pilasters and fascia with golden lettering
+  'Kidz Akademy': { text: 'KIDZ AKADEMY', bg: '#c4161c', fg: '#ffc93c', border: '#c4161c', wall: '#b0644b', brick: true, h: 6.2, roof: '#4a4f57', font: '"Comic Sans MS", "Trebuchet MS", sans-serif', sub: 'crèche & montessori', shop: { frame: '#c4161c', width: 12, windows: 2 } },
   'Kilcullen Town Hall': { text: 'Kilcullen Town Hall', sub: 'Theatre', bg: '#1d2f5e', fg: '#f7f1dc', border: '#c9a54a', wall: '#f2ead2', h: 9 },
   "St Brigid's Church": { text: "St Brigid's Church", bg: '#3d3a35', fg: '#efe7d2', border: '#a99a76', wall: '#c9c1b1', h: 12, noSign: true },
   'The Hideout': { text: 'The Hideout', bg: '#16291f', fg: '#e9d9a6', border: '#b99b52', wall: '#f1ead8' },

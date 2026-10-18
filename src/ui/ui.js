@@ -25,16 +25,17 @@ export class UI {
     hud.append(h('div', 'spacer'), this.goalEl, tools);
     body.append(hud);
 
-    // ---- driving pads
-    const left = h('div', 'pad left');
-    this.leftBtn = h('button', 'big turn', '⬅'); this.rightBtn = h('button', 'big turn', '➡');
-    left.append(this.leftBtn, this.rightBtn);
-    const right = h('div', 'pad right');
-    this.stopBtn = h('button', 'big stop', 'STOP<small>back</small>'); this.goBtn = h('button', 'big go', 'GO');
-    right.append(this.stopBtn, this.goBtn);
-    body.append(left, right);
-    this.keysEl = h('div', 'keys', '<kbd>↑</kbd> go &nbsp; <kbd>↓</kbd> stop / back &nbsp; <kbd>←</kbd><kbd>→</kbd> steer &nbsp; <kbd>H</kbd> horn &nbsp; <kbd>X</kbd> siren &nbsp; <kbd>R</kbd> back on the road &nbsp; <kbd>M</kbd> where to');
-    if (matchMedia('(pointer: fine)').matches) body.append(this.keysEl);
+    // ---- driving controls, as in Dublin Drive: steer on the left, brake and accelerate on the right. On a phone or
+    // tablet they're round see-through buttons you can hold and slide between; on a laptop it's the arrow keys.
+    const touchy = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
+    this.touch = h('div', 'touch' + (touchy ? ' on' : ''));
+    this.touch.innerHTML = `
+      <div class="pad left"><button data-k="left" aria-label="Steer left">&#9664;</button><button data-k="right" aria-label="Steer right">&#9654;</button></div>
+      <div class="pad right"><button data-k="stop" aria-label="Brake / reverse">&#9660;</button><button data-k="go" class="gas" aria-label="Go">&#9650;</button></div>`;
+    body.append(this.touch); body.classList.toggle('touchy', touchy);
+    [this.leftBtn, this.rightBtn, this.stopBtn, this.goBtn] = ['left', 'right', 'stop', 'go'].map((k) => this.touch.querySelector(`[data-k="${k}"]`));
+    this.keysEl = h('div', 'keys', '<kbd>↑</kbd> drive &nbsp; <kbd>↓</kbd> brake / reverse &nbsp; <kbd>←</kbd><kbd>→</kbd> steer &nbsp; <kbd>H</kbd> horn &nbsp; <kbd>X</kbd> siren &nbsp; <kbd>R</kbd> back on the road &nbsp; <kbd>M</kbd> where to');
+    if (!touchy) body.append(this.keysEl);
 
     this.speedEl = h('div', 'speed', '0 <small>km/h</small>'); body.append(this.speedEl);
     this.mapWrap = h('div', 'minimap'); this.mapCanvas = h('canvas'); this.mapCanvas.width = this.mapCanvas.height = 340; this.mapWrap.append(this.mapCanvas); body.append(this.mapWrap);
@@ -61,14 +62,22 @@ export class UI {
     this.party = h('div', 'overlay'); this.party.hidden = true; this.party.style.background = 'rgba(255,200,60,0.35)';
     this.partyMsg = h('div', 'yay'); this.party.append(this.partyMsg); body.append(this.party);
 
-    // ---- wiring: touch
-    const hold = (el, key) => {
-      const on = (e) => { e.preventDefault(); this.input[key] = true; el.classList.add('held'); this.emit('wake'); };
-      const off = () => { this.input[key] = false; el.classList.remove('held'); };
-      el.addEventListener('pointerdown', on); el.addEventListener('pointerup', off); el.addEventListener('pointerleave', off); el.addEventListener('pointercancel', off);
-      el.addEventListener('contextmenu', (e) => e.preventDefault());
+    // ---- wiring: touch. Each finger is tracked by which button it is over, so sliding from one to another works.
+    const fingers = new Map();
+    const refresh = () => {
+      for (const k of ['go', 'stop', 'left', 'right']) this.input[k] = false;
+      for (const k of fingers.values()) if (k) this.input[k] = true;
+      this.touch.querySelectorAll('button').forEach((b) => b.classList.toggle('down', !!this.input[b.dataset.k]));
     };
-    hold(this.goBtn, 'go'); hold(this.stopBtn, 'stop'); hold(this.leftBtn, 'left'); hold(this.rightBtn, 'right');
+    const keyAt = (x, y) => { const el = document.elementFromPoint(x, y); return el && el.dataset && el.dataset.k ? el.dataset.k : null; };
+    this.touch.addEventListener('pointerdown', (e) => {
+      const k = keyAt(e.clientX, e.clientY); if (!k) return;
+      e.preventDefault(); fingers.set(e.pointerId, k); refresh(); this.emit('wake');
+    });
+    window.addEventListener('pointermove', (e) => { if (fingers.has(e.pointerId)) { fingers.set(e.pointerId, keyAt(e.clientX, e.clientY)); refresh(); } });
+    const lift = (e) => { if (fingers.delete(e.pointerId)) refresh(); };
+    window.addEventListener('pointerup', lift); window.addEventListener('pointercancel', lift);
+    this.touch.addEventListener('contextmenu', (e) => e.preventDefault());
     const tap = (el, ev) => el.addEventListener('pointerdown', (e) => { e.preventDefault(); this.emit('wake'); this.emit(ev); });
     tap(this.hornBtn, 'horn'); tap(this.sirenBtn, 'siren'); tap(this.camBtn, 'camera'); tap(this.soundBtn, 'sound'); tap(this.resetBtn, 'reset');
     this.whereBtn.addEventListener('click', () => { this.emit('wake'); this.showPicker(); });

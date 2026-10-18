@@ -222,3 +222,29 @@ export function stoneTexture(text = '') {
   }
   return tex(c);
 }
+
+// Red brick, one 3 m storey bay per half like facadeTexture: the top half an upper floor with a white-framed window,
+// the bottom half plain brick over a pale rendered plinth (a shopfront goes in front of it).
+export function brickTexture() {
+  const c = canvas(256, 512), g = c.getContext('2d'), r = rng(41);
+  g.fillStyle = '#d9d2c6'; g.fillRect(0, 0, 256, 512); // mortar
+  const bh = 512 / 2 / 3 / 13.3; // ~75 mm courses
+  for (let y = 0, row = 0; y < 512; y += bh, row++) {
+    const off = row % 2 ? 0 : 11;
+    for (let x = -22; x < 256; x += 22) {
+      const v = r(); g.fillStyle = `rgb(${150 + v * 45 | 0},${62 + v * 25 | 0},${48 + v * 18 | 0})`;
+      g.fillRect(x + off + 1, y + 1, 20.5, bh - 1.6);
+    }
+  }
+  // pale plinth at the foot of the ground storey
+  g.fillStyle = '#d8d4cb'; g.fillRect(0, 512 - 50, 256, 50);
+  speckle(g, 256, 50, 300, ['#cbc6bb', '#e2ded6'], 2, r);
+  // upper window
+  const x = 70, y = 70, w = 116, h = 120;
+  g.fillStyle = '#f4f3ef'; g.fillRect(x - 7, y - 7, w + 14, h + 14);
+  const gr = g.createLinearGradient(0, y, 0, y + h); gr.addColorStop(0, '#9fc0d6'); gr.addColorStop(1, '#3c5566');
+  g.fillStyle = gr; g.fillRect(x, y, w, h);
+  g.fillStyle = '#f4f3ef'; g.fillRect(x + w / 2 - 3, y, 6, h); g.fillRect(x, y + h * 0.32, w, 5);
+  g.fillStyle = '#cfc9bd'; g.fillRect(x - 12, y + h + 7, w + 24, 10);
+  const t = tex(c); t.userData = { normal: normalMap(c, 2) }; return t;
+}

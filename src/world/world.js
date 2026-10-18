@@ -414,6 +414,9 @@ function addAnimals(group, bounds) {
   ], cows);
 }
 
+// the same lawn as the fields, for the sunken garden at home (uv = world x, -z like the ground plane)
+export function lawnMaterial() { const g = grassTexture(); g.repeat.set(1 / 9, 1 / 9); g.userData.normal.repeat.set(1 / 9, 1 / 9); return grassMaterial(g); }
+
 // The ground: grass detail with a normal map, varied over large areas by a noise texture (meadow patches, mown
 // lighter bands, darker damp hollows) so the fields don't look like one repeated tile.
 function grassMaterial(grass) {
