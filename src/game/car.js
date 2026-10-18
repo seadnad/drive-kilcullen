@@ -51,7 +51,8 @@ export class Car {
       const vx = d.b[0] - d.a[0], vz = d.b[1] - d.a[1], L = vx * vx + vz * vz;
       let t = ((x - d.a[0]) * vx + (z - d.a[1]) * vz) / L; t = Math.max(0, Math.min(1, t));
       const px = d.a[0] + vx * t, pz = d.a[1] + vz * t, dist = Math.hypot(x - px, z - pz);
-      if (!best || dist - d.half < best.dist - best.half) { const l = Math.sqrt(L); best = { x: px, z: pz, dx: vx / l, dz: vz / l, dist, half: d.half, margin: 0.8, lanes: 1, drive: true }; }
+      // the same score as the road grid (how far past the drivable edge), so the drive and the road join up seamlessly
+      if (!best || dist - d.half - 0.8 < best.dist - best.half - best.margin) { const l = Math.sqrt(L); best = { x: px, z: pz, dx: vx / l, dz: vz / l, dist, half: d.half, margin: 0.8, lanes: 1, drive: true }; }
     }
     return best;
   }
@@ -136,8 +137,10 @@ export class Car {
         const headOn = Math.max(0, nfx * nx + nfz * nz);
         let tx = r2.dx, tz = r2.dz;
         if (tx * nfx + tz * nfz < 0) { tx = -tx; tz = -tz; }
-        // aim a little back toward the middle of the road too; nose-on (the end of a road) swing right round
-        if (headOn > 0.8) { tx = -nx; tz = -nz; } else { tx -= nx * 0.35; tz -= nz * 0.35; }
+        // past the end of a road (the way along it leads further out) or nose-on to the edge: swing right round;
+        // otherwise run along the road, aiming a little back toward the middle
+        const pastEnd = tx * nx + tz * nz > 0.3;
+        if (headOn > 0.8 || pastEnd) { tx = -nx; tz = -nz; } else { tx -= nx * 0.35; tz -= nz * 0.35; }
         let dh = Math.atan2(tx, tz) - this.heading; dh = Math.atan2(Math.sin(dh), Math.cos(dh));
         if (Math.abs(this.speed) > 0.2 || input.throttle > 0) this.heading += dh * Math.min(1, dt * (2 + headOn * 6));
       }

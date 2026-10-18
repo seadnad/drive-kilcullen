@@ -2,7 +2,9 @@
 // along the L8007 and the R418 into Kilcullen, and on past Kilashee to the edge of Naas. Steer with the arrows,
 // GO to drive; the car is forgiving (it stays out of the hedges and helps follow the road).
 import * as THREE from 'three';
-import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { createAtmosphere } from './render/atmosphere.js';
+import { createPipeline } from './render/pipeline.js';
+import { createContactShadows } from './render/contact.js';
 import { buildWorld, inTown } from './world/world.js';
 import { buildEstate, home, groundY } from './world/estate.js';
 import { buildLandmarks } from './world/landmarks.js';
@@ -23,50 +25,21 @@ const canvas = document.getElementById('view');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: !MOBILE, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, MOBILE ? 1.5 : 2));
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
-renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
 const scene = new THREE.Scene();
-const SKY = new THREE.Color('#b3d6ef');
-scene.fog = new THREE.Fog(SKY, 160, 900);
-{
-  const c = document.createElement('canvas'); c.width = 4; c.height = 256;
-  const g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 256);
-  gr.addColorStop(0, '#6aaee6'); gr.addColorStop(0.55, '#b3d6ef'); gr.addColorStop(1, '#e4f1fb');
-  g.fillStyle = gr; g.fillRect(0, 0, 4, 256);
-  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; scene.background = t;
-}
-const pmrem = new THREE.PMREMGenerator(renderer);
-scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-scene.environmentIntensity = 0.35;
-scene.add(new THREE.HemisphereLight(0xd6ecff, 0x5b7d3a, 1.25));
-const sun = new THREE.DirectionalLight(0xfff1d6, 2.4);
-sun.castShadow = true;
-sun.shadow.mapSize.set(MOBILE ? 1024 : 2048, MOBILE ? 1024 : 2048);
-Object.assign(sun.shadow.camera, { left: -70, right: 70, top: 70, bottom: -70, near: 1, far: 400 });
-sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.6;
-scene.add(sun, sun.target);
-const SUN_DIR = new THREE.Vector3(-0.45, 0.8, 0.4).normalize();
+const atmo = createAtmosphere(scene, renderer, { lite: MOBILE });
 
 const camera = new THREE.PerspectiveCamera(60, 1, 0.3, 2500);
+const pipeline = createPipeline(renderer, scene, camera, MOBILE ? 'low' : 'high');
 function resize() {
   renderer.setSize(innerWidth, innerHeight, false);
+  pipeline.setSize(innerWidth, innerHeight);
   camera.aspect = innerWidth / innerHeight;
   camera.fov = camera.aspect < 1 ? 72 : 58;
   camera.updateProjectionMatrix();
 }
 addEventListener('resize', resize); resize();
-
-// fluffy clouds
-{
-  const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d');
-  for (let i = 0; i < 7; i++) { const x = 30 + Math.random() * 68, y = 50 + Math.random() * 30, r = 22 + Math.random() * 18; const gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, 'rgba(255,255,255,0.95)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 128, 128); }
-  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
-  for (let i = 0; i < 40; i++) {
-    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, fog: false, depthWrite: false, transparent: true, opacity: 0.9 }));
-    const a = Math.random() * Math.PI * 2, d = 500 + Math.random() * 900;
-    s.position.set(Math.cos(a) * d, 220 + Math.random() * 120, Math.sin(a) * d); s.scale.set(260, 130, 1);
-    scene.add(s);
-  }
-}
 
 // ---------------------------------------------------------------- world
 const { waterTex, buildings } = buildWorld(scene);
@@ -74,6 +47,7 @@ buildEstate(scene);
 const { badges } = buildLandmarks(scene, buildings);
 const traffic = new Traffic(scene, MOBILE ? 8 : 12);
 const guide = new Guide(scene);
+const contact = createContactShadows(scene, 32);
 const ui = new UI();
 const minimap = new MiniMap(ui.mapCanvas);
 const sound = new Sound();
@@ -207,8 +181,9 @@ let intro = !!home;
 function frame() {
   requestAnimationFrame(frame);
   clock.update();
-  step(Math.min(0.05, clock.getDelta()));
-  renderer.render(scene, camera);
+  const dt = Math.min(0.05, clock.getDelta());
+  step(dt);
+  pipeline.render(dt);
 }
 
 function step(dt) {
@@ -299,9 +274,11 @@ function step(dt) {
   camPos.lerp(want, k); camLook.lerp(at, first ? 1 : 1 - Math.exp(-dt * 8)); first = false;
   camera.position.copy(camPos); camera.lookAt(camLook);
 
-  // sun shadow box follows the car
-  sun.target.position.set(car.pos.x, 0, car.pos.z);
-  sun.position.copy(sun.target.position).addScaledVector(SUN_DIR, 200);
+  // sun, shadows and sky follow the car; soft shadows under every car
+  atmo.update(time, carMesh.position, { x: fx, z: fz });
+  const shadows = [{ x: car.pos.x, y: car.y, z: car.pos.z, h: car.heading, w: 2.5, l: 5.3 }];
+  for (const c of traffic.cars) shadows.push({ x: c.vis.x, y: 0, z: c.vis.z, h: c.vis.h, w: c.kind === 'tractor' ? 2.6 : 2.4, l: c.kind === 'van' ? 6 : c.kind === 'tractor' ? 4.6 : 4.8 });
+  contact.update(shadows);
 
   // ---- mini map and goal distance at a calmer pace
   mapT -= dt;

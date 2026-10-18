@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import world, { edges } from '../game/graph.js';
 import { roadGrid, isEstateRoad, inEstate } from './common.js';
 import { Soup, ribbon, offsets, centroid } from './geom.js';
+import { crownMaterial, barkMaterial, lumpySphere, lumpyBox } from './foliage.js';
 import { rng, bungalowTexture, tileTexture, stoneTexture, pavementTexture, hedgeTexture } from './textures.js';
 
 const hex = (h) => { const c = new THREE.Color(h); return [c.r, c.g, c.b]; };
@@ -156,8 +157,8 @@ export function buildEstate(scene) {
 
   // ---- materials and meshes
   const add = (soup, mat, shadow = true) => { const m = new THREE.Mesh(soup.geometry(), mat); m.castShadow = shadow; m.receiveShadow = true; g.add(m); return m; };
-  add(walls, new THREE.MeshStandardMaterial({ map: bungalowTexture(), vertexColors: true, roughness: 0.92 }));
-  add(roofs, new THREE.MeshStandardMaterial({ map: tileTexture(), vertexColors: true, roughness: 0.85 }));
+  { const t = bungalowTexture(); add(walls, new THREE.MeshStandardMaterial({ map: t, normalMap: t.userData.normal, normalScale: new THREE.Vector2(0.6, 0.6), vertexColors: true, roughness: 0.92 })); }
+  { const t = tileTexture(); add(roofs, new THREE.MeshStandardMaterial({ map: t, normalMap: t.userData.normal, vertexColors: true, roughness: 0.8 })); }
   add(trim, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6 }));
   add(glass, new THREE.MeshStandardMaterial({ color: 0x3f5f78, roughness: 0.05, metalness: 0.5, transparent: true, opacity: 0.6, side: THREE.DoubleSide }), false);
   const gravelMat = new THREE.MeshStandardMaterial({ map: gravelTexture(), roughness: 1, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
@@ -312,26 +313,27 @@ function gravelTexture() {
 // ---------------------------------------------------------------------------------------------------------------
 function instancedHedge(g, spots) {
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
-  const im = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ map: hedgeTexture(), roughness: 1 }), spots.length);
-  const cols = ['#9ccf5e', '#a9d867', '#8fc254', '#b8c95e', '#a3c85c'].map((h) => new THREE.Color(h)); // beech, fresh green with a hint of copper
+  const ht = hedgeTexture();
+  const im = new THREE.InstancedMesh(lumpyBox(), new THREE.MeshStandardMaterial({ map: ht, normalMap: ht.userData.normal, normalScale: new THREE.Vector2(1.2, 1.2), roughness: 0.95 }), spots.length);
+  const cols = ['#e6f2c0', '#f2f7cc', '#dce9b4', '#f6eec2', '#e9f0bd'].map((h) => new THREE.Color(h)); // beech: fresh green with a hint of copper, over the leaf texture
   spots.forEach(([x, z, a], i) => { im.setMatrixAt(i, m.compose(p.set(x, 0.65, z), q.setFromAxisAngle(Y, a), s.set(1.0, 1.3, 1.75))); im.setColorAt(i, cols[i % cols.length]); });
   im.castShadow = true; im.receiveShadow = true; g.add(im);
 }
 
 function instancedShrubs(g, spots) {
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3();
-  const im = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, flatShading: true }), spots.length);
-  const cols = ['#4f7f36', '#3f6e2c', '#6a9442', '#5b8a3a'].map((h) => new THREE.Color(h));
+  const im = new THREE.InstancedMesh(lumpySphere(3, 2), crownMaterial(), spots.length);
+  const cols = ['#b9cf9f', '#a6bf8c', '#cbdcae', '#b0c794'].map((h) => new THREE.Color(h));
   spots.forEach(([x, z, y, rad], i) => { im.setMatrixAt(i, m.compose(p.set(x, y + rad * 0.7, z), q, s.set(rad, rad * 0.8, rad))); im.setColorAt(i, cols[i % cols.length]); });
   im.castShadow = true; g.add(im);
 }
 
 function instancedTrees(g, spots, r) {
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
-  const trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.12, 0.18, 1, 6).translate(0, 0.5, 0), new THREE.MeshStandardMaterial({ color: 0x6b5a48, roughness: 1 }), spots.length);
+  const trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.12, 0.18, 1, 7).translate(0, 0.5, 0), barkMaterial(), spots.length);
   const birch = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.1, 0.15, 1, 6).translate(0, 0.5, 0), new THREE.MeshStandardMaterial({ color: 0xece8e0, roughness: 0.9 }), spots.length);
-  const crown = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, flatShading: true }), spots.length * 2);
-  const greens = ['#4d8a34', '#5c9a3e', '#3f7a2c', '#6aa646', '#5a8f36'].map((h) => new THREE.Color(h));
+  const crown = new THREE.InstancedMesh(lumpySphere(7), crownMaterial(), spots.length * 2);
+  const greens = ['#a8c890', '#b8d49e', '#98b983', '#c4dca8', '#a2c189'].map((h) => new THREE.Color(h));
   let nt = 0, nb = 0;
   spots.forEach((t, i) => {
     const [x, z] = t.p, y = t.y || 0;
@@ -377,7 +379,7 @@ function entrance(g, r) {
   const a = pts[i - 1], b = pts[i], l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, dx = (b[0] - a[0]) / l, dz = (b[1] - a[1]) / l;
   const t = Math.min(1, (9 - acc) / l), cx = a[0] + (b[0] - a[0]) * t, cz = a[1] + (b[1] - a[1]) * t;
   const lx = dz, lz = -dx; // left, driving in
-  const granite = new THREE.MeshStandardMaterial({ map: stoneTexture(), roughness: 1, flatShading: true });
+  const gt = stoneTexture(); const granite = new THREE.MeshStandardMaterial({ map: gt, roughness: 1, flatShading: true });
   const half = best.e.w / 2;
   for (const side of [-1, 1]) {
     const ox = cx + lx * side * (half + 3.2), oz = cz + lz * side * (half + 3.2);
@@ -398,13 +400,17 @@ function entrance(g, r) {
   const wx = cx + lx * (half + 7) + dx * 3, wz = cz + lz * (half + 7) + dz * 3;
   const willow = new THREE.Group();
   const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.4, 5, 7).translate(0, 2.5, 0), new THREE.MeshStandardMaterial({ color: 0x6b5a48 })); willow.add(trunk);
-  const leaf = new THREE.MeshStandardMaterial({ color: 0x8fb04a, roughness: 1, flatShading: true });
-  for (let k = 0; k < 18; k++) {
-    const ang = (k / 18) * Math.PI * 2, rad = 2.2 + r() * 1.4;
-    const drape = new THREE.Mesh(new THREE.ConeGeometry(0.9, 4.5 + r() * 1.5, 5).rotateX(Math.PI), leaf);
-    drape.position.set(Math.cos(ang) * rad, 4.2, Math.sin(ang) * rad); drape.castShadow = true; willow.add(drape);
+  const leaf = crownMaterial().clone(); leaf.color.set(0xd9ecaa); // willow: pale, yellowy green
+  const drapeGeo = lumpySphere(13, 2, 0.3);
+  for (let k = 0; k < 22; k++) {
+    const ang = (k / 22) * Math.PI * 2 + r() * 0.2, rad = 2.4 + r() * 1.3;
+    // long hanging curtains of leaves
+    const len = 4 + r() * 1.6;
+    const drape = new THREE.Mesh(drapeGeo, leaf);
+    drape.scale.set(0.8, len / 2, 0.8);
+    drape.position.set(Math.cos(ang) * rad, 6.3 - len / 2, Math.sin(ang) * rad); drape.castShadow = true; willow.add(drape);
   }
-  const top = new THREE.Mesh(new THREE.IcosahedronGeometry(3.2, 1).scale(1, 0.6, 1), leaf); top.position.y = 6.2; willow.add(top);
+  const top = new THREE.Mesh(lumpySphere(17), leaf); top.scale.set(3.4, 1.8, 3.4); top.position.y = 6.4; willow.add(top);
   willow.position.set(wx, 0, wz); g.add(willow);
 }
 

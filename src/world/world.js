@@ -7,6 +7,8 @@ import { SIGNS } from './places.js';
 import { pointInPoly } from './geom.js';
 import { TOWN, inTown, roadGrid, runsWhere, inEstate, isEstateRoad } from './common.js';
 import { home, estateBuildingIdx } from './estate.js';
+import { noiseTexture } from '../render/atmosphere.js';
+import { crownMaterial, barkMaterial, lumpySphere, lumpyBox } from './foliage.js';
 import { grassTexture, asphaltTexture, pavementTexture, waterTexture, facadeTexture, roofTexture, hedgeTexture, rng } from './textures.js';
 
 export { TOWN, inTown, roadGrid };
@@ -23,18 +25,19 @@ export function buildWorld(scene) {
   // ---------------------------------------------------------------- ground
   const grass = grassTexture();
   // one big field, with a hole where our garden dips below the road (the estate fills it with the sunken lawn)
-  grass.repeat.set(1 / 24, 1 / 24);
+  grass.repeat.set(1 / 9, 1 / 9); grass.userData.normal.repeat.set(1 / 9, 1 / 9);
   const shape = new THREE.Shape([[bounds.min.x, bounds.min.y], [bounds.max.x, bounds.min.y], [bounds.max.x, bounds.max.y], [bounds.min.x, bounds.max.y]].map(([x, z]) => new THREE.Vector2(x, -z)));
   if (home) shape.holes.push(new THREE.Path(home.corners.map(([x, z]) => new THREE.Vector2(x, -z))));
-  const ground = new THREE.Mesh(new THREE.ShapeGeometry(shape), new THREE.MeshStandardMaterial({ map: grass, roughness: 1 }));
+  const ground = new THREE.Mesh(new THREE.ShapeGeometry(shape), grassMaterial(grass));
   ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true;
   group.add(ground);
 
   // ---------------------------------------------------------------- roads
-  const road = new Soup(), path = new Soup(), marks = new Soup(), yellow = new Soup();
+  const road = new Soup(), path = new Soup(), marks = new Soup(), yellow = new Soup(), edge = new Soup();
   for (const e of edges) {
     const half = e.w / 2;
     ribbon(road, e.pts, half, 0.06, { vScale: 6, uScale: 6 });
+    if (e.cls !== 'service' && e.cls !== 'residential') for (const run of runsWhere(e.pts, (p) => !inTown(p[0], p[1], -60))) ribbon(edge, run, half + 0.45, 0.045, { col: hex('#8c8a6c') });
     if (e.cls !== 'service' && !e.bridge && !isEstateRoad(e)) for (const run of runsWhere(e.pts, (p) => inTown(p[0], p[1]))) ribbon(path, run, half + 2.4, 0.03, { vScale: 3, uScale: 3 });
     // broken white centre line on two-lane roads (not the estate, not the narrow local L roads)
     const estate = isEstateRoad(e), local = /^L/.test(e.ref);
@@ -65,7 +68,9 @@ export function buildWorld(scene) {
     if (r && inTown(n.x, n.z)) disc(path, n.x, n.z, r + 2.4, 0.031, 24, [1, 1, 1], 3);
   }
   const asphalt = asphaltTexture();
-  const roadMat = new THREE.MeshStandardMaterial({ map: asphalt, roughness: 0.92, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+  const roadMat = new THREE.MeshStandardMaterial({ map: asphalt, normalMap: asphalt.userData.normal, normalScale: new THREE.Vector2(0.5, 0.5), roughness: 0.88, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+  // worn, dusty edges on the country roads where the grass meets the tarmac
+  group.add(new THREE.Mesh(edge.geometry(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, polygonOffset: true, polygonOffsetFactor: -1.5, polygonOffsetUnits: -1.5 })));
   const roadMesh = new THREE.Mesh(road.geometry(), roadMat); roadMesh.receiveShadow = true; group.add(roadMesh);
   const pathMat = new THREE.MeshStandardMaterial({ map: pavementTexture(), roughness: 0.95, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
   const pathMesh = new THREE.Mesh(path.geometry(), pathMat); pathMesh.receiveShadow = true; group.add(pathMesh);
@@ -100,7 +105,7 @@ export function buildWorld(scene) {
   // ---------------------------------------------------------------- buildings
   const { walls, roofs, info } = buildBuildings();
   const facade = facadeTexture();
-  const wallMat = new THREE.MeshStandardMaterial({ map: facade, vertexColors: true, roughness: 0.9 });
+  const wallMat = new THREE.MeshStandardMaterial({ map: facade, normalMap: facade.userData.normal, normalScale: new THREE.Vector2(0.5, 0.5), vertexColors: true, roughness: 0.9 });
   const wallMesh = new THREE.Mesh(walls.geometry(), wallMat); wallMesh.castShadow = true; wallMesh.receiveShadow = true; group.add(wallMesh);
   const roofMat = new THREE.MeshStandardMaterial({ map: roofTexture(), vertexColors: true, roughness: 0.85 });
   const roofMesh = new THREE.Mesh(roofs.geometry(), roofMat); roofMesh.castShadow = true; roofMesh.receiveShadow = true; group.add(roofMesh);
@@ -322,12 +327,14 @@ function addHedgesAndTrees(group, bounds) {
     if (inEstate(x, z, 30)) continue;
     if (r() < (d > 50 ? 0.55 : 0.3)) treeM.push({ x, z, big: r() < 0.5 });
   }
-  const hedge = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ map: hedgeTexture(), roughness: 1 }), hedgeM.length);
+  const ht = hedgeTexture();
+  const leafMat = new THREE.MeshStandardMaterial({ map: ht, normalMap: ht.userData.normal, normalScale: new THREE.Vector2(1.2, 1.2), roughness: 0.95 });
+  const hedge = new THREE.InstancedMesh(lumpyBox(), leafMat, hedgeM.length);
   hedgeM.forEach((mm, i) => hedge.setMatrixAt(i, mm));
-  const hcols = ['#3f7a2c', '#4a8634', '#356b25', '#55913a', '#467f30'].map((h) => new THREE.Color(h));
+  const hcols = ['#c8d6b4', '#d6e2c2', '#b9c9a4', '#e2ebcf', '#c2d1ab'].map((h) => new THREE.Color(h)); // tints over the leaf texture
   hedgeM.forEach((mm, i) => hedge.setColorAt(i, hcols[(r() * hcols.length) | 0]));
   hedge.castShadow = true; hedge.receiveShadow = true; group.add(hedge);
-  const bump = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, flatShading: true }), bumps.length);
+  const bump = new THREE.InstancedMesh(lumpySphere(5), leafMat, bumps.length);
   bumps.forEach(([x, y, z, rad], i) => { bump.setMatrixAt(i, m.compose(p.set(x, y, z), q.setFromAxisAngle(Y, r() * 6), s.set(rad * 1.2, rad * 0.8, rad * 1.2))); bump.setColorAt(i, hcols[(r() * hcols.length) | 0]); });
   bump.castShadow = true; group.add(bump);
 
@@ -335,10 +342,10 @@ function addHedgesAndTrees(group, bounds) {
   for (const t of treeM) { t.hgt = t.big ? 5 + r() * 4 : 3 + r() * 2; t.rad = t.big ? 3 + r() * 1.8 : 1.8 + r(); }
   treeM = treeM.filter((t) => roadGrid.dist(t.x, t.z, 20) > t.rad + 2);
   const trunkG = new THREE.CylinderGeometry(0.22, 0.35, 1, 6).translate(0, 0.5, 0);
-  const crownG = new THREE.IcosahedronGeometry(1, 1);
-  const trunks = new THREE.InstancedMesh(trunkG, new THREE.MeshStandardMaterial({ color: 0x5a4330, roughness: 1 }), treeM.length);
-  const crowns = new THREE.InstancedMesh(crownG, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, flatShading: true }), treeM.length * 2);
-  const greens = ['#3f7d33', '#4f8f3a', '#5a9b40', '#356f2c', '#6aa64a'].map((h) => new THREE.Color(h));
+  const crownG = lumpySphere(11);
+  const trunks = new THREE.InstancedMesh(trunkG, barkMaterial(), treeM.length);
+  const crowns = new THREE.InstancedMesh(crownG, crownMaterial(), treeM.length * 2);
+  const greens = ['#8fb07a', '#a3c08a', '#7e9f6c', '#b1c995', '#93ad7a'].map((h) => new THREE.Color(h)); // tints over the leaf texture
   treeM.forEach((t, i) => {
     const hgt = t.hgt, rad = t.rad;
     m.compose(p.set(t.x, 0, t.z), q.identity(), s.set(1, hgt * 0.55, 1)); trunks.setMatrixAt(i, m);
@@ -405,4 +412,22 @@ function addAnimals(group, bounds) {
     [new THREE.BoxGeometry(0.4, 0.25, 0.2).translate(0, 1.3, 1.68), pink],
     [new THREE.BoxGeometry(0.85, 0.8, 1.7).translate(0, 0.4, 0), patch],
   ], cows);
+}
+
+// The ground: grass detail with a normal map, varied over large areas by a noise texture (meadow patches, mown
+// lighter bands, darker damp hollows) so the fields don't look like one repeated tile.
+function grassMaterial(grass) {
+  const m = new THREE.MeshStandardMaterial({ map: grass, normalMap: grass.userData.normal, normalScale: new THREE.Vector2(0.8, 0.8), roughness: 0.95 });
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.uMacro = { value: noiseTexture };
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec2 vWorldXZ;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWorldXZ = (modelMatrix * vec4(position, 1.0)).xz;');
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec2 vWorldXZ; uniform sampler2D uMacro;')
+      .replace('#include <map_fragment>', `#include <map_fragment>
+        float mA = texture2D(uMacro, vWorldXZ / 420.0).r, mB = texture2D(uMacro, vWorldXZ / 97.0 + 0.37).g;
+        float m = mA * 0.65 + mB * 0.35;
+        vec3 dry = vec3(1.12, 1.06, 0.78), lush = vec3(0.82, 0.95, 0.78);
+        diffuseColor.rgb *= mix(lush, dry, smoothstep(0.35, 0.7, m)) * (0.88 + 0.24 * mB);`);
+  };
+  return m;
 }

@@ -21,24 +21,48 @@ function speckle(g, w, h, n, colours, size, r) {
   for (let i = 0; i < n; i++) { g.fillStyle = colours[(r() * colours.length) | 0]; const s = size * (0.5 + r()); g.fillRect(r() * w, r() * h, s, s); }
 }
 
-export function grassTexture() {
-  const c = canvas(512, 512), g = c.getContext('2d'), r = rng(3);
-  g.fillStyle = '#6fa64a'; g.fillRect(0, 0, 512, 512);
-  speckle(g, 512, 512, 9000, ['#5f9a3e', '#7cb255', '#679f45', '#86ba5d', '#5a8f3a'], 3, r);
-  // soft mottling
-  for (let i = 0; i < 40; i++) {
-    const x = r() * 512, y = r() * 512, rad = 30 + r() * 70, gr = g.createRadialGradient(x, y, 0, x, y, rad);
-    gr.addColorStop(0, r() > 0.5 ? 'rgba(140,190,90,0.25)' : 'rgba(70,120,40,0.22)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
-    g.fillStyle = gr; g.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+// A normal map from a canvas's brightness (bright = raised), for bumpy, lit-looking surfaces.
+export function normalMap(src, strength = 2) {
+  const w = src.width, h = src.height, d = src.getContext('2d').getImageData(0, 0, w, h).data;
+  const L = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) L[i] = (d[i * 4] * 0.3 + d[i * 4 + 1] * 0.59 + d[i * 4 + 2] * 0.11) / 255;
+  const c = canvas(w, h), g = c.getContext('2d'), img = g.createImageData(w, h);
+  const at = (x, y) => L[((y + h) % h) * w + ((x + w) % w)];
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const dx = (at(x + 1, y) - at(x - 1, y)) * strength, dy = (at(x, y + 1) - at(x, y - 1)) * strength;
+    const l = Math.hypot(dx, dy, 1), i = (y * w + x) * 4;
+    img.data[i] = (-dx / l * 0.5 + 0.5) * 255; img.data[i + 1] = (dy / l * 0.5 + 0.5) * 255; img.data[i + 2] = (1 / l * 0.5 + 0.5) * 255; img.data[i + 3] = 255;
   }
-  return tex(c);
+  g.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8;
+  return t;
+}
+
+// Grass: a mown-field detail tile of short strokes in mixed greens and straw, with a matching normal map.
+export function grassTexture() {
+  const S = 512, c = canvas(S, S), g = c.getContext('2d'), r = rng(3);
+  g.fillStyle = '#5f8a3a'; g.fillRect(0, 0, S, S);
+  const cols = ['#557f33', '#6a9842', '#4b7330', '#77a14a', '#5d8a38', '#8a9a4c', '#456b2b'];
+  for (let i = 0; i < 26000; i++) {
+    const x = r() * S, y = r() * S, l = 3 + r() * 7, a = -Math.PI / 2 + (r() - 0.5) * 1.2;
+    g.strokeStyle = cols[(r() * cols.length) | 0]; g.globalAlpha = 0.55 + r() * 0.45; g.lineWidth = 0.8 + r() * 1.2;
+    g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); g.stroke();
+  }
+  // wrap the strokes that cross the edges so the tile repeats cleanly
+  g.globalAlpha = 1;
+  const t = tex(c); t.userData = { normal: normalMap(c, 3) };
+  return t;
 }
 
 export function asphaltTexture() {
-  const c = canvas(256, 256), g = c.getContext('2d'), r = rng(7);
-  g.fillStyle = '#5b5e62'; g.fillRect(0, 0, 256, 256);
-  speckle(g, 256, 256, 6000, ['#53565a', '#64676b', '#4c4f53', '#6c6f73'], 2, r);
-  return tex(c);
+  const S = 512, c = canvas(S, S), g = c.getContext('2d'), r = rng(7);
+  g.fillStyle = '#56595c'; g.fillRect(0, 0, S, S);
+  // aggregate: lots of little stones, lighter and darker
+  for (let i = 0; i < 30000; i++) { const v = 70 + r() * 70 | 0; g.fillStyle = `rgb(${v},${v + 2},${v + 5})`; const sz = 0.8 + r() * 2.2; g.fillRect(r() * S, r() * S, sz, sz); }
+  // patches and repairs
+  for (let i = 0; i < 18; i++) { const x = r() * S, y = r() * S, rad = 20 + r() * 60, gr = g.createRadialGradient(x, y, 0, x, y, rad); gr.addColorStop(0, `rgba(${r() < 0.5 ? '30,32,35' : '120,122,124'},0.18)`); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(x - rad, y - rad, rad * 2, rad * 2); }
+  const t = tex(c); t.userData = { normal: normalMap(c, 2.2) };
+  return t;
 }
 
 export function pavementTexture() {
@@ -77,7 +101,7 @@ export function facadeTexture() {
   g.fillStyle = '#4b3220'; g.fillRect(38, 310, 54, 90); g.fillRect(38, 410, 54, 90);
   g.fillStyle = '#d9b44a'; g.beginPath(); g.arc(88, 420, 5, 0, 7); g.fill();
   win(130, 320, 100, 130);
-  return tex(c);
+  const t = tex(c); t.userData = { normal: normalMap(c, 1.5) }; return t;
 }
 
 export function roofTexture() {
@@ -94,12 +118,22 @@ export function roofTexture() {
   return tex(c);
 }
 
-export function hedgeTexture() {
-  const c = canvas(128, 128), g = c.getContext('2d'), r = rng(19);
-  g.fillStyle = '#3f7a2c'; g.fillRect(0, 0, 128, 128);
-  speckle(g, 128, 128, 2500, ['#356b25', '#4d8c36', '#2e5e20', '#5a9a3f'], 4, r);
-  return tex(c);
+// Leaves: small overlapping leaf shapes in mixed greens with darker gaps, for hedges and tree crowns.
+export function leafTexture(base = ['#3e6e2a', '#4f8434', '#5f953c', '#36602a', '#6aa045'], seed = 19) {
+  const S = 256, c = canvas(S, S), g = c.getContext('2d'), r = rng(seed);
+  g.fillStyle = '#23401a'; g.fillRect(0, 0, S, S);
+  for (let i = 0; i < 2600; i++) {
+    const x = r() * S, y = r() * S, w = 3 + r() * 5, h = 2 + r() * 3, a = r() * Math.PI;
+    g.fillStyle = base[(r() * base.length) | 0]; g.globalAlpha = 0.85;
+    g.beginPath(); g.ellipse(x, y, w, h, a, 0, Math.PI * 2); g.fill();
+    // repeat across the edges
+    if (x < 8 || x > S - 8 || y < 8 || y > S - 8) { g.beginPath(); g.ellipse((x + S / 2) % S, (y + S / 2) % S, w, h, a, 0, Math.PI * 2); g.fill(); }
+  }
+  g.globalAlpha = 1;
+  const t = tex(c); t.userData = { normal: normalMap(c, 4) };
+  return t;
 }
+export function hedgeTexture() { return leafTexture(['#3d6c29', '#4a7f32', '#2f5a22', '#58903a', '#44772e'], 19); }
 
 // A shop or place sign: text on a coloured board. Returns { texture, aspect }.
 export function signTexture(text, { bg = '#1d3d2c', fg = '#f5e9c8', font = 'Georgia, serif', border = '#c9a54a', sub = '' } = {}) {
@@ -157,7 +191,7 @@ export function bungalowTexture() {
   g.fillRect(wx + ww / 3 - 4, wy, 8, wh); g.fillRect(wx + (2 * ww) / 3 - 4, wy, 8, wh); g.fillRect(wx, wy + wh * 0.3, ww, 6);
   g.fillStyle = 'rgba(255,255,255,0.25)'; g.fillRect(wx + 6, wy + 6, ww / 3 - 16, wh * 0.25);
   g.fillStyle = '#d6d2c8'; g.fillRect(wx - 14, wy + wh + 8, ww + 28, 12);
-  return tex(c);
+  const t = tex(c); t.userData = { normal: normalMap(c, 1.2) }; return t;
 }
 
 // concrete roof tiles, grey
@@ -172,7 +206,7 @@ export function tileTexture() {
     }
   }
   speckle(g, 256, 256, 900, ['rgba(60,90,40,0.25)', 'rgba(40,40,40,0.2)'], 2, r);
-  return tex(c);
+  const t = tex(c); t.userData = { normal: normalMap(c, 3) }; return t;
 }
 
 // rough granite for the gate pillars and the name stone
