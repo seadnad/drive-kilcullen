@@ -1,5 +1,5 @@
-// Sound: the engine (three recorded loops cross-faded by speed), the Garda siren, a horn, a star chime and an
-// arrival fanfare (synthesised), and a friendly voice through the browser's speech synthesis.
+// Sound: the engine (three recorded loops cross-faded by speed), the Garda siren, and a horn and an arrival
+// fanfare (synthesised).
 const BASE = import.meta.env.BASE_URL;
 
 export class Sound {
@@ -30,7 +30,7 @@ export class Sound {
     this.ready = true;
   }
 
-  setOn(on) { this.on = on; if (this.master) this.master.gain.setTargetAtTime(on ? 0.8 : 0, this.ctx.currentTime, 0.05); if (!on && window.speechSynthesis) speechSynthesis.cancel(); }
+  setOn(on) { this.on = on; if (this.master) this.master.gain.setTargetAtTime(on ? 0.8 : 0, this.ctx.currentTime, 0.05); }
 
   // v: speed m/s, vmax: top speed
   update(v, vmax, throttle) {
@@ -55,7 +55,6 @@ export class Sound {
       o.connect(g).connect(this.master); o.start(t); o.stop(t + dur + 0.05);
     });
   }
-  star() { this.tone([988, 1319], { dur: 0.18, gap: 0.07, vol: 0.18 }); }
   tick() { this.tone([660], { dur: 0.06, vol: 0.12, type: 'triangle' }); }
   fanfare() { this.tone([523, 659, 784, 1047, 784, 1047], { dur: 0.3, gap: 0.13, vol: 0.2, type: 'triangle' }); }
   horn() {
@@ -71,23 +70,3 @@ export class Sound {
   }
 }
 
-// Speak a short line, in an Irish or British English voice where the device has one.
-let voice = null;
-function pickVoice() {
-  if (!window.speechSynthesis) return null;
-  const vs = speechSynthesis.getVoices();
-  return vs.find((v) => /en-IE/i.test(v.lang)) || vs.find((v) => /en-GB/i.test(v.lang)) || vs.find((v) => /^en/i.test(v.lang)) || null;
-}
-if (window.speechSynthesis) speechSynthesis.onvoiceschanged = () => { voice = pickVoice(); };
-
-export function say(text, sound) {
-  if (!window.speechSynthesis || (sound && !sound.on)) return;
-  try {
-    speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    voice = voice || pickVoice();
-    if (voice) u.voice = voice;
-    u.rate = 0.95; u.pitch = 1.15;
-    speechSynthesis.speak(u);
-  } catch { /* no speech on this device */ }
-}

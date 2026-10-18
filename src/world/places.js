@@ -3,7 +3,7 @@
 
 // Destinations for the picker. `poi` is the OpenStreetMap name; `say` is what the car's voice says.
 export const DESTINATIONS = [
-  { id: 'home', poi: 'Home', label: 'Home', emoji: '🏠', colour: '#e5484d', say: 'home' },
+  { id: 'home', poi: 'Our House', label: 'Home', emoji: '🏠', colour: '#e5484d', say: 'home' },
   { id: 'kidz', poi: 'Kidz Akademy', label: 'Kidz Akademy', emoji: '🧸', colour: '#8e4ec6', say: 'Kidz Akademy' },
   { id: 'gaa', poi: 'Kilcullen GAA', label: 'GAA Club', emoji: '🏐', colour: '#222222', say: 'the G A A club' },
   { id: 'brew', poi: 'Little Brew Cafe', label: 'Little Brew', emoji: '☕', colour: '#0f8b8d', say: 'Little Brew' },
@@ -40,5 +40,5 @@ export const SIGNS = {
   'Kilcullen Community Centre': { text: 'Community Centre', bg: '#3b5b2f', fg: '#ffffff', border: '#ffffff' },
   'Scoil Bhride': { text: 'Scoil Bhríde', bg: '#1f5f8b', fg: '#ffffff', border: '#ffffff' },
   'Cross and Passion College': { text: 'Cross & Passion College', bg: '#5b1f3f', fg: '#ffffff', border: '#e6c36a' },
-  'Kilashee House Hotel': { text: 'Killashee Hotel', wall: '#d9cfbd', h: 12, roof: '#3f454d', noSign: true },
+  'Kilashee House Hotel': { text: 'Killashee Hotel', wall: '#d9cfbd', h: 9.5, roof: '#3f454d', noSign: true },
 };

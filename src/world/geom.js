@@ -124,12 +124,13 @@ export function obb(pts) {
 
 // Uniform grid of road segments for "how far is the nearest road" queries.
 export class RoadGrid {
-  constructor(edges, cell = 40) {
+  constructor(edges, cell = 40, marginFor = () => 1) {
     this.cell = cell; this.map = new Map();
     for (const e of edges) {
+      const margin = marginFor(e);
       for (let k = 1; k < e.pts.length; k++) {
         const a = e.pts[k - 1], b = e.pts[k];
-        const seg = { a, b, w: e.w, e };
+        const seg = { a, b, w: e.w, e, margin };
         const x0 = Math.floor((Math.min(a[0], b[0]) - 10) / cell), x1 = Math.floor((Math.max(a[0], b[0]) + 10) / cell);
         const z0 = Math.floor((Math.min(a[1], b[1]) - 10) / cell), z1 = Math.floor((Math.max(a[1], b[1]) + 10) / cell);
         for (let x = x0; x <= x1; x++) for (let z = z0; z <= z1; z++) { const k2 = x + ',' + z; if (!this.map.has(k2)) this.map.set(k2, []); this.map.get(k2).push(seg); }
@@ -148,6 +149,28 @@ export class RoadGrid {
         let t = L ? ((x - s.a[0]) * vx + (z - s.a[1]) * vz) / L : 0; t = Math.max(0, Math.min(1, t));
         const d = Math.hypot(x - s.a[0] - vx * t, z - s.a[1] - vz * t) - s.w / 2;
         if (d < best) best = d;
+      }
+    }
+    return best;
+  }
+  // nearest point on any road centreline: { x, z, dx, dz (unit, along the road), dist, half, margin, lanes, oneway, e }
+  // Of overlapping roads (junctions) the one whose kerb is nearest wins.
+  nearest(x, z, range = 40) {
+    const c = this.cell, r = Math.ceil(range / c);
+    const cx = Math.floor(x / c), cz = Math.floor(z / c);
+    let best = null, bestScore = Infinity;
+    for (let i = -r; i <= r; i++) for (let j = -r; j <= r; j++) {
+      const list = this.map.get((cx + i) + ',' + (cz + j)); if (!list) continue;
+      for (const s of list) {
+        const vx = s.b[0] - s.a[0], vz = s.b[1] - s.a[1], L = vx * vx + vz * vz;
+        if (!L) continue;
+        let t = ((x - s.a[0]) * vx + (z - s.a[1]) * vz) / L; t = Math.max(0, Math.min(1, t));
+        const px = s.a[0] + vx * t, pz = s.a[1] + vz * t, d = Math.hypot(x - px, z - pz);
+        const score = d - s.w / 2 - s.margin;
+        if (score < bestScore) {
+          bestScore = score; const l = Math.sqrt(L);
+          best = { x: px, z: pz, dx: vx / l, dz: vz / l, dist: d, half: s.w / 2, margin: s.margin, lanes: s.e.lanes, oneway: s.e.oneway, e: s.e };
+        }
       }
     }
     return best;

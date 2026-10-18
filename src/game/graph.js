@@ -11,6 +11,8 @@ export const edges = world.edges.map((e, i) => {
 });
 for (const e of edges) {
   // dir +1 travels a -> b, -1 travels b -> a; one-way roads only go a -> b
+  // only roundabouts are kept one-way: other one-way bits were cut off by the map pull and would trap the planner
+  if (e.oneway && !e.round) e.oneway = 0;
   nodes[e.a].out.push({ e, dir: 1 });
   if (!e.oneway) nodes[e.b].out.push({ e, dir: -1 });
 }

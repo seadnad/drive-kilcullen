@@ -46,20 +46,31 @@ function global([x, y]) {
   const k = fOf(d) / d;
   return [TOWN_C[0] + dx * k, TOWN_C[1] + dy * k];
 }
-// Lenses magnify a spot after the squeeze: a radial fisheye in game space, k(r) = 1 + (M - 1) / (1 + (r/sigma)^2).
-// r * k(r) keeps increasing for any M below 9, so nothing folds; far away it fades to (almost) nothing.
+// Lenses restore a spot to (nearly) true shape and size after the squeeze. Near the centre a point maps to
+// gc + scale * (p - c), undoing the squeeze's stretch (J0 is its local Jacobian); with distance (in real metres,
+// R the lens radius) it blends back to the squeezed map. Applied in sequence; the fold check below guards them.
+const ESTATE_C = [-4670, -4962]; // the middle of the Carrighill Lower estate
 const LENSES = [
-  { c: POI['Kilashee House Hotel'], M: 5.5, sigma: 60 },
-  { c: POI.Home, M: 5.5, sigma: 50 },
-  { c: POI['Kilcullen Road Roundabout'], M: 8, sigma: 28 },
+  { c: POI['Kilashee House Hotel'], scale: 0.62, R: 180 },
+  { c: ESTATE_C, scale: 0.8, R: 350 },
+  { c: POI['Kilcullen Road Roundabout'], scale: 1.0, R: 45 },
 ];
-for (const L of LENSES) L.gc = global(L.c);
+function jac(f, p) {
+  const e = 1, a = f(p), bx = f([p[0] + e, p[1]]), by = f([p[0], p[1] + e]);
+  return [[(bx[0] - a[0]) / e, (by[0] - a[0]) / e], [(bx[1] - a[1]) / e, (by[1] - a[1]) / e]];
+}
+const inv2 = (m) => { const d = m[0][0] * m[1][1] - m[0][1] * m[1][0]; return [[m[1][1] / d, -m[0][1] / d], [-m[1][0] / d, m[0][0] / d]]; };
+for (const L of LENSES) { L.gc = global(L.c); L.Ji = inv2(jac(global, L.c)); }
 function squeeze(p) {
   let [x, y] = global(p);
   for (const L of LENSES) {
-    const ux = x - L.gc[0], uy = y - L.gc[1], r2 = (ux * ux + uy * uy) / (L.sigma * L.sigma);
-    const k = 1 + (L.M - 1) / (1 + r2);
-    x = L.gc[0] + ux * k; y = L.gc[1] + uy * k;
+    const ux = x - L.gc[0], uy = y - L.gc[1];
+    // approximate true offset from the lens centre, in metres
+    const rx = L.Ji[0][0] * ux + L.Ji[0][1] * uy, ry = L.Ji[1][0] * ux + L.Ji[1][1] * uy;
+    const r = Math.hypot(rx, ry) / L.R;
+    const w = 1 / (1 + r * r); // slow enough a fade that it never folds while scale < ~8x the squeeze
+    x = L.gc[0] + w * L.scale * rx + (1 - w) * ux;
+    y = L.gc[1] + w * L.scale * ry + (1 - w) * uy;
   }
   return [x, y];
 }
@@ -88,7 +99,7 @@ const routeDist = (p) => { let m = Infinity; for (let i = 1; i < route.length; i
 const near = (p, c, r) => Math.hypot(p[0] - c[0], p[1] - c[1]) < r;
 const TOWN_KEEP = 1100;
 const inTown = (p) => near(p, TOWN_C, TOWN_KEEP);
-const inHome = (p) => near(p, POI.Home, 420);
+const inHome = (p) => near(p, ESTATE_C, 330);
 const inKilashee = (p) => near(p, POI['Kilashee House Hotel'], 420);
 const inNaas = (p) => near(p, POI['Kilcullen Road Roundabout'], 90);
 
@@ -100,7 +111,7 @@ function keepVertex(i, way) {
   const p = V[i];
   if (inTown(p)) return true;
   if (vOnRoute(i)) return true;
-  if (inHome(p) && way.tags.highway === 'residential') return true;
+  if (inHome(p) && /^(residential|tertiary|unclassified)$/.test(way.tags.highway)) return true;
   if (inKilashee(p) && way.tags.highway === 'service') return true;
   if (inNaas(p)) return true;
   return false;
@@ -175,6 +186,7 @@ while (merged) {
     if ((a.tags.oneway === 'yes') !== (b.tags.oneway === 'yes')) continue;
     if (a.tags.junction !== b.tags.junction) continue;
     if (!!a.tags.bridge !== !!b.tags.bridge) continue;
+    if (a.tags.highway !== b.tags.highway || (a.tags.ref || '') !== (b.tags.ref || '')) continue;
     let A = a.ids[a.ids.length - 1] === v ? a.ids : [...a.ids].reverse();
     let B = b.ids[0] === v ? b.ids : [...b.ids].reverse();
     if (a.tags.oneway === 'yes' && (a.ids[a.ids.length - 1] !== v || b.ids[0] !== v)) continue;
@@ -237,7 +249,7 @@ const outBuildings = buildings.filter((b) => {
 }).map((b) => {
   const t = b.tags;
   const pts = b.pts.slice(0, -1).map(G); // closed rings repeat the first point
-  return { pts, kind: t.building, name: t.name || '', amenity: t.amenity || t.shop || t.tourism || '', levels: Number(t['building:levels']) || 0 };
+  return { pts, kind: t.building, name: t.name || '', amenity: t.amenity || t.shop || t.tourism || '', levels: Number(t['building:levels']) || 0, estate: near(b.pts[0], ESTATE_C, 260) ? 1 : 0, ours: b === buildings[41] ? 1 : 0 };
 });
 const outWater = [], outAreas = [];
 for (const o of other) {
@@ -250,6 +262,13 @@ for (const o of other) {
   } else if (t.leisure || t.amenity) {
     outAreas.push({ kind: t.leisure || t.amenity, sport: t.sport || '', name: t.name || '', pts: o.pts.slice(0, -1).map(G) });
   }
+}
+// home: the house the family picked out on the map (building 41 in the pull), and where the estate road leaves the L8007
+const OUR_HOUSE = 41; // (also flagged as `ours` on the building above)
+{
+  const pts = buildings[OUR_HOUSE].pts.slice(0, -1);
+  POI['Our House'] = [pts.reduce((a, p) => a + p[0], 0) / pts.length, pts.reduce((a, p) => a + p[1], 0) / pts.length];
+  POI['Estate Entrance'] = [-4708, -5005];
 }
 const outPOI = Object.fromEntries(Object.entries(POI).map(([n, p]) => [n, G(p)]));
 const outRoute = route.map(G);

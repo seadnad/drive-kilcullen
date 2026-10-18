@@ -339,27 +339,13 @@ export function buildLandmarks(scene, buildings) {
     }
   }
 
-  // ---------------------------------------------------------------- home
-  {
-    // the game is public, so home is the estate entrance rather than any particular house
-    const [x, z] = P.Home;
-    const info = null;
-    // a little heart balloon on a string above the house
-    const heart = new THREE.Shape();
-    heart.moveTo(0, -1); heart.bezierCurveTo(-0.2, -0.6, -1.4, -0.2, -1.2, 0.6); heart.bezierCurveTo(-1, 1.3, -0.1, 1.2, 0, 0.6);
-    heart.bezierCurveTo(0.1, 1.2, 1, 1.3, 1.2, 0.6); heart.bezierCurveTo(1.4, -0.2, 0.2, -0.6, 0, -1);
-    const hm = new THREE.Mesh(new THREE.ExtrudeGeometry(heart, { depth: 0.5, bevelEnabled: true, bevelSize: 0.15, bevelThickness: 0.15, bevelSegments: 2 }), std({ color: 0xe5484d, emissive: 0x501010 }));
-    hm.position.set(x, (info ? info.h : 6) + 7, z); hm.userData.spin = true; g.add(hm);
-    g.userData.heart = hm;
-  }
-
   // ---------------------------------------------------------------- floating destination badges
   const badges = [];
   for (const d of DESTINATIONS) {
     const p = P[d.poi]; if (!p) continue;
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: badgeTexture(d.emoji, d.label, d.colour), depthWrite: false }));
     const bi = buildingFor(d.poi), info = bi >= 0 ? buildings[bi] : null;
-    const base = d.id === 'home' ? 20 : (info ? info.h : 4) + 9;
+    const base = d.id === 'home' ? 12 : (info ? info.h : 4) + 9;
     sp.position.set(p[0], base, p[1]); sp.scale.set(8, 10, 1); sp.renderOrder = 5;
     sp.userData = { base, id: d.id };
     g.add(sp); badges.push(sp);

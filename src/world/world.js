@@ -5,19 +5,11 @@ import world, { edges, nodes } from '../game/graph.js';
 import { Soup, ribbon, disc, flatPoly, polyArea, centroid, obb, slice, RoadGrid, offsets } from './geom.js';
 import { SIGNS } from './places.js';
 import { pointInPoly } from './geom.js';
+import { TOWN, inTown, roadGrid, runsWhere, inEstate, isEstateRoad } from './common.js';
+import { home, estateBuildingIdx } from './estate.js';
 import { grassTexture, asphaltTexture, pavementTexture, waterTexture, facadeTexture, roofTexture, hedgeTexture, rng } from './textures.js';
 
-export const TOWN = { x: -120, z: 60, r: 760 }; // game coordinates of the middle of town
-export const inTown = (x, z, pad = 0) => Math.hypot(x - TOWN.x, z - TOWN.z) < TOWN.r + pad;
-export const roadGrid = new RoadGrid(edges);
-
-// the stretches of a polyline whose points pass a test (each at least two points long)
-function runsWhere(pts, test) {
-  const out = []; let cur = [];
-  for (const p of pts) { if (test(p)) cur.push(p); else { if (cur.length > 1) out.push(cur); cur = []; } }
-  if (cur.length > 1) out.push(cur);
-  return out;
-}
+export { TOWN, inTown, roadGrid };
 
 const hex = (h) => { const c = new THREE.Color(h); return [c.r, c.g, c.b]; };
 
@@ -29,10 +21,13 @@ export function buildWorld(scene) {
   bounds.expandByScalar(700);
 
   // ---------------------------------------------------------------- ground
-  const gsize = bounds.getSize(new THREE.Vector2()), gc = bounds.getCenter(new THREE.Vector2());
-  const grass = grassTexture(); grass.repeat.set(gsize.x / 24, gsize.y / 24);
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(gsize.x, gsize.y), new THREE.MeshStandardMaterial({ map: grass, roughness: 1 }));
-  ground.rotation.x = -Math.PI / 2; ground.position.set(gc.x, 0, gc.y); ground.receiveShadow = true;
+  const grass = grassTexture();
+  // one big field, with a hole where our garden dips below the road (the estate fills it with the sunken lawn)
+  grass.repeat.set(1 / 24, 1 / 24);
+  const shape = new THREE.Shape([[bounds.min.x, bounds.min.y], [bounds.max.x, bounds.min.y], [bounds.max.x, bounds.max.y], [bounds.min.x, bounds.max.y]].map(([x, z]) => new THREE.Vector2(x, -z)));
+  if (home) shape.holes.push(new THREE.Path(home.corners.map(([x, z]) => new THREE.Vector2(x, -z))));
+  const ground = new THREE.Mesh(new THREE.ShapeGeometry(shape), new THREE.MeshStandardMaterial({ map: grass, roughness: 1 }));
+  ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true;
   group.add(ground);
 
   // ---------------------------------------------------------------- roads
@@ -40,10 +35,21 @@ export function buildWorld(scene) {
   for (const e of edges) {
     const half = e.w / 2;
     ribbon(road, e.pts, half, 0.06, { vScale: 6, uScale: 6 });
-    if (e.cls !== 'service' && !e.bridge) for (const run of runsWhere(e.pts, (p) => inTown(p[0], p[1]))) ribbon(path, run, half + 2.4, 0.03, { vScale: 3, uScale: 3 });
-    // broken white centre line on two-lane roads
-    if (e.lanes >= 2 && e.w >= 6 && !e.round && e.len > 14) {
+    if (e.cls !== 'service' && !e.bridge && !isEstateRoad(e)) for (const run of runsWhere(e.pts, (p) => inTown(p[0], p[1]))) ribbon(path, run, half + 2.4, 0.03, { vScale: 3, uScale: 3 });
+    // broken white centre line on two-lane roads (not the estate, not the narrow local L roads)
+    const estate = isEstateRoad(e), local = /^L/.test(e.ref);
+    if (e.lanes >= 2 && e.w >= 6 && !e.round && e.len > 14 && !estate && !local) {
       for (let s = 6; s + 3 < e.len - 6; s += 9) ribbon(marks, slice(e.pts, e.cum, s, s + 3), 0.08, 0.09);
+    }
+    // the local roads have broken white lines along each edge instead
+    if (local) {
+      for (const run of runsWhere(e.pts, (p) => !inTown(p[0], p[1]))) {
+        const { L, R } = offsets(run, half - 0.4);
+        for (const line of [L, R]) {
+          const cum = [0]; for (let k = 1; k < line.length; k++) cum.push(cum[k - 1] + Math.hypot(line[k][0] - line[k - 1][0], line[k][1] - line[k - 1][1]));
+          for (let s = 2; s + 2.5 < cum[cum.length - 1]; s += 5) ribbon(marks, slice(line, cum, s, s + 2.5), 0.07, 0.09);
+        }
+      }
     }
     // yellow edge lines on the regional roads out the country
     if (/^R/.test(e.ref) && e.len > 10) {
@@ -152,6 +158,7 @@ function buildBuildings() {
   const walls = new Soup(), roofs = new Soup(), info = [];
   const r = rng(29);
   for (const [bi, b] of world.buildings.entries()) {
+    if (estateBuildingIdx.has(bi)) continue; // the estate builds its own bungalows
     let pts = b.pts;
     if (pts.length < 3) continue;
     const area = Math.abs(polyArea(pts));
@@ -172,7 +179,8 @@ function buildBuildings() {
     }
     const main = nearMain(cx, cz) && b.kind !== 'school';
     const sp = paint.get(bi) || {};
-    const h = sp.h || heightFor(b, main);
+    // anything left in the estate is a garage or shed: single storey
+    const h = sp.h || (inEstate(cx, cz) ? 3 : heightFor(b, main));
     const pal = main ? MAIN_PALETTE : ESTATE_PALETTE;
     let wallCol = hex(b.kind === 'industrial' || b.kind === 'retail' ? '#c9c4bb' : r() < (main ? 0.08 : 0.15) ? BRICK : pal[(r() * pal.length) | 0]);
     if (sp.wall) wallCol = hex(sp.wall);
@@ -220,7 +228,7 @@ function extraHouses(walls, roofs, r) {
         const back = e.w / 2 + (nearNaas ? 10 : 24);
         const nx = dz * side, nz = -dx * side; // off to one side of the road
         const x = px + nx * back, z = pz + nz * back;
-        if (Math.hypot(x - naas[0], z - naas[1]) < 40 || (rural && inTown(x, z, 80))) continue;
+        if (Math.hypot(x - naas[0], z - naas[1]) < 40 || (rural && (inTown(x, z, 80) || inEstate(x, z, 40)))) continue;
         if (roadGrid.dist(x, z, 40) < (nearNaas ? 7 : 12) || !free(x, z, nearNaas ? 12 : 30)) continue;
         placed.push([x, z]);
         const wallCol = hex(nearNaas ? ESTATE_PALETTE[(r() * ESTATE_PALETTE.length) | 0] : r() < 0.7 ? '#f6f4ee' : '#efe2c4');
@@ -282,7 +290,7 @@ export function gableRoof(walls, roofs, o, h, roofCol, wallCol, over = 0.35) {
 function addHedgesAndTrees(group, bounds) {
   const r = rng(41);
   let treeM = [];
-  const hedgeM = [], m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
+  const hedgeM = [], bumps = [], m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
   for (const e of edges) {
     if (e.cls === 'service' || e.cls === 'residential') continue;
     for (const side of [-1, 1]) {
@@ -294,11 +302,14 @@ function addHedgesAndTrees(group, bounds) {
         let k = 1; while (k < cum.length - 1 && cum[k] < d) k++;
         const t = (d - cum[k - 1]) / ((cum[k] - cum[k - 1]) || 1);
         const x = line[k - 1][0] + (line[k][0] - line[k - 1][0]) * t, z = line[k - 1][1] + (line[k][1] - line[k - 1][1]) * t;
-        if (inTown(x, z, -40) || roadGrid.dist(x, z, 20) < 1.2) continue;
+        if (inTown(x, z, -40) || roadGrid.dist(x, z, 20) < 1.2 || (home && home.groundY(x, z) < -0.01)) continue;
         const ang = Math.atan2(line[k][0] - line[k - 1][0], line[k][1] - line[k - 1][1]);
-        q.setFromAxisAngle(Y, ang); s.set(1.5, 1.6 + r() * 0.5, 3.8); p.set(x, s.y / 2, z);
+        // tall, untidy country hedges with leafy tops bulging out of them
+        const hh = 2.3 + r() * 1.1;
+        q.setFromAxisAngle(Y, ang); s.set(1.9, hh, 3.8); p.set(x, hh / 2, z);
         hedgeM.push(m.compose(p, q, s).clone());
-        if (r() < 0.07) treeM.push({ x: x + side * 1.5 * Math.cos(ang), z: z - side * 1.5 * Math.sin(ang), big: true });
+        if (r() < 0.6) bumps.push([x + (r() - 0.5) * 1.2, hh - 0.2 + r() * 0.4, z + (r() - 0.5) * 1.2, 1.0 + r() * 0.8]);
+        if (r() < 0.22) treeM.push({ x: x + side * 2.2 * Math.cos(ang), z: z - side * 2.2 * Math.sin(ang), big: r() < 0.7 });
       }
     }
   }
@@ -308,11 +319,17 @@ function addHedgesAndTrees(group, bounds) {
     const d = roadGrid.dist(x, z, 60);
     if (d < 9) continue;
     if (inTown(x, z, -150) && d < 25) continue;
+    if (inEstate(x, z, 30)) continue;
     if (r() < (d > 50 ? 0.55 : 0.3)) treeM.push({ x, z, big: r() < 0.5 });
   }
   const hedge = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ map: hedgeTexture(), roughness: 1 }), hedgeM.length);
   hedgeM.forEach((mm, i) => hedge.setMatrixAt(i, mm));
+  const hcols = ['#3f7a2c', '#4a8634', '#356b25', '#55913a', '#467f30'].map((h) => new THREE.Color(h));
+  hedgeM.forEach((mm, i) => hedge.setColorAt(i, hcols[(r() * hcols.length) | 0]));
   hedge.castShadow = true; hedge.receiveShadow = true; group.add(hedge);
+  const bump = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, flatShading: true }), bumps.length);
+  bumps.forEach(([x, y, z, rad], i) => { bump.setMatrixAt(i, m.compose(p.set(x, y, z), q.setFromAxisAngle(Y, r() * 6), s.set(rad * 1.2, rad * 0.8, rad * 1.2))); bump.setColorAt(i, hcols[(r() * hcols.length) | 0]); });
+  bump.castShadow = true; group.add(bump);
 
   // size each tree, and drop any whose crown would hang over a road (it would hide the car)
   for (const t of treeM) { t.hgt = t.big ? 5 + r() * 4 : 3 + r() * 2; t.rad = t.big ? 3 + r() * 1.8 : 1.8 + r(); }
@@ -361,7 +378,7 @@ function addAnimals(group, bounds) {
   for (let herd = 0; herd < 60; herd++) {
     const x0 = bounds.min.x + r() * (bounds.max.x - bounds.min.x), z0 = bounds.min.y + r() * (bounds.max.y - bounds.min.y);
     const d = roadGrid.dist(x0, z0, 140);
-    if (d < 25 || d > 130 || inTown(x0, z0, 150)) continue;
+    if (d < 25 || d > 130 || inTown(x0, z0, 150) || inEstate(x0, z0, 60)) continue;
     const list = r() < 0.55 ? sheep : cows;
     const n = 4 + ((r() * 6) | 0);
     for (let i = 0; i < n; i++) { const x = x0 + (r() - 0.5) * 30, z = z0 + (r() - 0.5) * 30; if (roadGrid.dist(x, z, 30) > 12) list.push([x, z, r() * 6.28]); }

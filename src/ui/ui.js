@@ -1,28 +1,28 @@
-// The on-screen bits: star counter, where-we're-going chip, tool buttons, the big GO / STOP and turn buttons,
+// The on-screen bits: where-we're-going chip, tool buttons, the big GO / STOP and steering buttons,
 // the destination picker, the arrival party, toasts and the round mini map. Keyboard works alongside touch.
 import { DESTINATIONS } from '../world/places.js';
-import { edges, sample } from '../game/graph.js';
+import { edges } from '../game/graph.js';
 
 const h = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
 
 export class UI {
   constructor() {
-    this.input = { go: false, stop: false };
+    this.input = { go: false, stop: false, left: false, right: false };
     this.handlers = {};
     const body = document.body;
 
     // ---- top bar
     const hud = h('div', 'hud');
-    this.starsEl = h('div', 'stars', '⭐ <span>0</span>');
     this.goalEl = h('div', 'goal'); this.goalEl.hidden = true;
     const tools = h('div', 'tools');
     this.whereBtn = h('button', 'tool where', '🗺️ <span>Where to?</span>');
     this.sirenBtn = h('button', 'tool', '🚨'); this.sirenBtn.title = 'Siren (X)';
     this.hornBtn = h('button', 'tool', '📯'); this.hornBtn.title = 'Horn (H)';
     this.camBtn = h('button', 'tool', '🎥'); this.camBtn.title = 'Camera (C)';
+    this.resetBtn = h('button', 'tool', '🔄'); this.resetBtn.title = 'Back on the road (R)';
     this.soundBtn = h('button', 'tool', '🔊'); this.soundBtn.title = 'Sound (V)';
-    tools.append(this.whereBtn, this.sirenBtn, this.hornBtn, this.camBtn, this.soundBtn);
-    hud.append(this.starsEl, this.goalEl, tools);
+    tools.append(this.whereBtn, this.sirenBtn, this.hornBtn, this.camBtn, this.resetBtn, this.soundBtn);
+    hud.append(h('div', 'spacer'), this.goalEl, tools);
     body.append(hud);
 
     // ---- driving pads
@@ -30,10 +30,10 @@ export class UI {
     this.leftBtn = h('button', 'big turn', '⬅'); this.rightBtn = h('button', 'big turn', '➡');
     left.append(this.leftBtn, this.rightBtn);
     const right = h('div', 'pad right');
-    this.stopBtn = h('button', 'big stop', 'STOP'); this.goBtn = h('button', 'big go', 'GO');
+    this.stopBtn = h('button', 'big stop', 'STOP<small>back</small>'); this.goBtn = h('button', 'big go', 'GO');
     right.append(this.stopBtn, this.goBtn);
     body.append(left, right);
-    this.keysEl = h('div', 'keys', '<kbd>↑</kbd> go &nbsp; <kbd>↓</kbd> stop &nbsp; <kbd>←</kbd><kbd>→</kbd> pick a road &nbsp; <kbd>H</kbd> horn &nbsp; <kbd>X</kbd> siren &nbsp; <kbd>M</kbd> where to');
+    this.keysEl = h('div', 'keys', '<kbd>↑</kbd> go &nbsp; <kbd>↓</kbd> stop / back &nbsp; <kbd>←</kbd><kbd>→</kbd> steer &nbsp; <kbd>H</kbd> horn &nbsp; <kbd>X</kbd> siren &nbsp; <kbd>R</kbd> back on the road &nbsp; <kbd>M</kbd> where to');
     if (matchMedia('(pointer: fine)').matches) body.append(this.keysEl);
 
     this.speedEl = h('div', 'speed', '0 <small>km/h</small>'); body.append(this.speedEl);
@@ -68,14 +68,13 @@ export class UI {
       el.addEventListener('pointerdown', on); el.addEventListener('pointerup', off); el.addEventListener('pointerleave', off); el.addEventListener('pointercancel', off);
       el.addEventListener('contextmenu', (e) => e.preventDefault());
     };
-    hold(this.goBtn, 'go'); hold(this.stopBtn, 'stop');
+    hold(this.goBtn, 'go'); hold(this.stopBtn, 'stop'); hold(this.leftBtn, 'left'); hold(this.rightBtn, 'right');
     const tap = (el, ev) => el.addEventListener('pointerdown', (e) => { e.preventDefault(); this.emit('wake'); this.emit(ev); });
-    tap(this.leftBtn, 'left'); tap(this.rightBtn, 'right');
-    tap(this.hornBtn, 'horn'); tap(this.sirenBtn, 'siren'); tap(this.camBtn, 'camera'); tap(this.soundBtn, 'sound');
+    tap(this.hornBtn, 'horn'); tap(this.sirenBtn, 'siren'); tap(this.camBtn, 'camera'); tap(this.soundBtn, 'sound'); tap(this.resetBtn, 'reset');
     this.whereBtn.addEventListener('click', () => { this.emit('wake'); this.showPicker(); });
 
     // ---- wiring: keys
-    const keymap = { arrowup: 'go', w: 'go', ' ': 'go', arrowdown: 'stop', s: 'stop' };
+    const keymap = { arrowup: 'go', w: 'go', arrowdown: 'stop', s: 'stop', ' ': 'stop', arrowleft: 'left', a: 'left', arrowright: 'right', d: 'right' };
     window.addEventListener('keydown', (e) => {
       const k = e.key.toLowerCase();
       this.emit('wake');
@@ -85,8 +84,7 @@ export class UI {
       }
       if (keymap[k]) { this.input[keymap[k]] = true; e.preventDefault(); }
       if (e.repeat) return;
-      if (k === 'arrowleft' || k === 'a') { this.emit('left'); this.flash(this.leftBtn); }
-      if (k === 'arrowright' || k === 'd') { this.emit('right'); this.flash(this.rightBtn); }
+      if (k === 'r' || k === 'backspace') this.emit('reset');
       if (k === 'h') this.emit('horn');
       if (k === 'x') this.emit('siren');
       if (k === 'c') this.emit('camera');
@@ -94,7 +92,7 @@ export class UI {
       if (k === 'm' || k === 'enter') this.showPicker();
     });
     window.addEventListener('keyup', (e) => { const k = keymap[e.key.toLowerCase()]; if (k) this.input[k] = false; });
-    window.addEventListener('blur', () => { this.input.go = this.input.stop = false; });
+    window.addEventListener('blur', () => { this.input.go = this.input.stop = this.input.left = this.input.right = false; });
   }
 
   on(ev, fn) { (this.handlers[ev] ||= []).push(fn); }
@@ -109,7 +107,6 @@ export class UI {
   }
   hidePicker() { this.picker.hidden = true; }
 
-  setStars(n, pop) { this.starsEl.querySelector('span').textContent = n; if (pop) { this.starsEl.classList.remove('pop'); void this.starsEl.offsetWidth; this.starsEl.classList.add('pop'); } }
   setGoal(d, dist) {
     if (!d) { this.goalEl.hidden = true; return; }
     this.goalEl.hidden = false;
@@ -118,9 +115,9 @@ export class UI {
     if (html !== this._goal) { this.goalEl.innerHTML = html; this._goal = html; }
   }
   setSpeed(kmh) { const v = Math.round(kmh); if (v !== this._spd) { this.speedEl.innerHTML = `${v} <small>km/h</small>`; this._spd = v; } }
-  setTurnHint(canLeft, canRight, hint) {
-    this.leftBtn.classList.toggle('dim', !canLeft); this.rightBtn.classList.toggle('dim', !canRight);
-    this.leftBtn.classList.toggle('hint', hint && canLeft); this.rightBtn.classList.toggle('hint', hint && canRight);
+  // glow the steering button for the way to turn at the next junction
+  setTurnHint(side) {
+    this.leftBtn.classList.toggle('hint', side < 0); this.rightBtn.classList.toggle('hint', side > 0);
   }
   setGoWiggle(on) { this.goBtn.classList.toggle('wiggle', on); }
   setTool(btn, on) { this[btn].classList.toggle('on', on); }
@@ -213,17 +210,3 @@ export class MiniMap {
   }
 }
 
-// points along the car's planned way, for the mini map
-export function pathPoints(car, maxLen = 3000) {
-  const out = []; const tmp = {};
-  let e = car.e, dir = car.dir, s = car.s, total = 0;
-  const steps = [car.next, ...(car.steps ? car.steps.slice(1) : [])];
-  let k = 0;
-  while (e && total < maxLen) {
-    for (; s <= e.len; s += 15) { sample(e, dir, s, tmp); out.push([tmp.x, tmp.z]); total += 15; }
-    sample(e, dir, e.len, tmp); out.push([tmp.x, tmp.z]);
-    const n = steps[k++]; if (!n || n.uturn) break;
-    e = n.e; dir = n.dir; s = 0;
-  }
-  return out;
-}

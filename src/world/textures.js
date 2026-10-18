@@ -137,3 +137,54 @@ export function roundRect(g, x, y, w, h, r) {
   g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r);
   g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
 }
+
+// One 3.5 m bay of an Irish bungalow front: white dash render, a wide white-framed window with a sill, and a
+// beige plinth along the bottom. The top strip is plain render (used for gables and chimneys).
+export function bungalowTexture() {
+  const c = canvas(512, 512), g = c.getContext('2d'), r = rng(23);
+  g.fillStyle = '#f7f6f1'; g.fillRect(0, 0, 512, 512);
+  speckle(g, 512, 512, 4000, ['#efeee8', '#fbfbf7', '#e9e8e1'], 2, r);
+  // plinth: the bottom 0.45 m of 3 m
+  const ph = Math.round(512 * 0.45 / 3);
+  g.fillStyle = '#d9cdb4'; g.fillRect(0, 512 - ph, 512, ph);
+  g.fillStyle = 'rgba(0,0,0,0.12)'; g.fillRect(0, 512 - ph, 512, 4);
+  // window: 2.3 m wide, 1.25 m tall, sill at 0.95 m
+  const px = 512 / 3.5, wx = (512 - 2.3 * px) / 2, ww = 2.3 * px, wy = 512 - (0.95 + 1.25) * 512 / 3, wh = 1.25 * 512 / 3;
+  g.fillStyle = '#ffffff'; g.fillRect(wx - 8, wy - 8, ww + 16, wh + 16);
+  const gr = g.createLinearGradient(0, wy, 0, wy + wh); gr.addColorStop(0, '#8fb3cc'); gr.addColorStop(1, '#2e4555');
+  g.fillStyle = gr; g.fillRect(wx, wy, ww, wh);
+  g.fillStyle = '#ffffff';
+  g.fillRect(wx + ww / 3 - 4, wy, 8, wh); g.fillRect(wx + (2 * ww) / 3 - 4, wy, 8, wh); g.fillRect(wx, wy + wh * 0.3, ww, 6);
+  g.fillStyle = 'rgba(255,255,255,0.25)'; g.fillRect(wx + 6, wy + 6, ww / 3 - 16, wh * 0.25);
+  g.fillStyle = '#d6d2c8'; g.fillRect(wx - 14, wy + wh + 8, ww + 28, 12);
+  return tex(c);
+}
+
+// concrete roof tiles, grey
+export function tileTexture() {
+  const c = canvas(256, 256), g = c.getContext('2d'), r = rng(31);
+  g.fillStyle = '#76746f'; g.fillRect(0, 0, 256, 256);
+  for (let y = 0; y < 256; y += 21) {
+    for (let x = (y / 21) % 2 ? 0 : -16; x < 256; x += 32) {
+      const v = 100 + r() * 30 | 0;
+      g.fillStyle = `rgb(${v},${v - 2},${v - 6})`; g.fillRect(x + 1, y + 1, 30, 18);
+      g.fillStyle = 'rgba(0,0,0,0.18)'; g.fillRect(x + 1, y + 16, 30, 4);
+    }
+  }
+  speckle(g, 256, 256, 900, ['rgba(60,90,40,0.25)', 'rgba(40,40,40,0.2)'], 2, r);
+  return tex(c);
+}
+
+// rough granite for the gate pillars and the name stone
+export function stoneTexture(text = '') {
+  const c = canvas(256, 256), g = c.getContext('2d'), r = rng(37);
+  g.fillStyle = '#a7a196'; g.fillRect(0, 0, 256, 256);
+  speckle(g, 256, 256, 5000, ['#8f897e', '#b9b3a8', '#9c958a', '#c4bfb4', '#7d776d'], 3, r);
+  g.strokeStyle = 'rgba(60,55,50,0.35)'; g.lineWidth = 2;
+  for (let i = 0; i < 14; i++) { g.beginPath(); const y = r() * 256; g.moveTo(0, y); g.lineTo(256, y + (r() - 0.5) * 30); g.stroke(); }
+  if (text) {
+    g.font = 'bold 30px Georgia, serif'; g.textAlign = 'center'; g.fillStyle = 'rgba(50,46,42,0.75)';
+    text.split('\n').forEach((t, i, a) => g.fillText(t, 128, 128 + (i - (a.length - 1) / 2) * 36));
+  }
+  return tex(c);
+}

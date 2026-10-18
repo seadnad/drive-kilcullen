@@ -32,11 +32,13 @@ button { font-family: var(--font); cursor: pointer; border: none; }
 .pad.right { right: max(14px, env(safe-area-inset-right)); }
 .big { border-radius: 50%; box-shadow: var(--shadow); display: grid; place-items: center; color: #fff; font-weight: 900; transition: transform 0.08s, box-shadow 0.08s, filter 0.2s; }
 .big:active, .big.held { transform: translateY(5px) scale(0.97); box-shadow: 0 1px 0 rgba(0, 0, 0, 0.2); }
-.turn { width: 92px; height: 92px; background: #3e63dd; font-size: 50px; }
+.turn { width: 104px; height: 104px; background: #3e63dd; font-size: 54px; }
 .turn.dim { filter: grayscale(0.85) opacity(0.55); }
 .turn.hint { animation: glow 1s ease-in-out infinite; }
 @keyframes glow { 50% { box-shadow: 0 0 0 10px rgba(255, 210, 63, 0.75), var(--shadow); } }
-.stop { width: 92px; height: 92px; background: #e5484d; font-size: 22px; }
+.stop { width: 92px; height: 92px; background: #e5484d; font-size: 20px; line-height: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.stop small { font-size: 12px; opacity: 0.85; font-weight: 700; }
+.spacer { width: 1px; }
 .go { width: 136px; height: 136px; background: #30a46c; font-size: 38px; }
 .go.wiggle { animation: wiggle 1.2s ease-in-out infinite; }
 @keyframes wiggle { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-6deg) scale(1.04); } 75% { transform: rotate(6deg) scale(1.04); } }
