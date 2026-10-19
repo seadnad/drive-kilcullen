@@ -9,19 +9,20 @@
 import { roadGrid } from '../world/world.js';
 
 const P = {
-  maxSpeed: 16.5,   // m/s, about 60 km/h
-  accel: 6.5,
+  maxSpeed: 25,     // m/s, about 90 km/h
+  accel: 9,
   brake: 16,
   reverseMax: 4.5,
   drag: 0.0028,
   rolling: 0.6,
   maxSteer: 0.62,
   steerRate: 5.5,
-  steerReturn: 8,
+  steerReturn: 12,
   steerFade: 0.05,
   wheelbase: 2.6,
   grip: 18,
-  assistYaw: 1.6,   // how strongly the road assist turns the nose along the road (1/s)
+  assistYaw: 2.2,   // how strongly the road assist turns the nose along the road (1/s)
+  holdStraight: 6,  // with the wheel centred and no road to follow, how quickly any leftover turn dies away (1/s)
 };
 
 export class Car {
@@ -96,6 +97,7 @@ export class Car {
     const angle = this.steer * (p.maxSteer / (1 + spd * p.steerFade));
     let yaw = -(Math.sign(vLong) * Math.min(spd, 5 + spd * 0.55) * Math.tan(angle)) / p.wheelbase * (spd < 1 ? spd : 1);
 
+    let steady = false;
     // ---- road assist: line up with the road and settle into the left lane while the wheel is centred
     if (assist && r && spd > 1.5 && vLong > 0 && Math.abs(input.steer) < 0.05 && r.dist < r.half + 4) {
       // which way along the road are we going?
@@ -103,18 +105,29 @@ export class Car {
       if (dx * fx + dz * fz < 0) { dx = -dx; dz = -dz; }
       const align = Math.abs(dx * fx + dz * fz);
       if (align > 0.55) { // not at a right-angle junction: leave turns to the driver
-        // left lane target (two-lane roads), measured from the centreline
-        const lane = r.lanes >= 2 && !r.oneway ? r.half / 2 : 0;
-        const lx = dz, lz = -dx; // left of travel
-        const off = (this.pos.x - r.x) * lx + (this.pos.z - r.z) * lz; // + = left of centre
-        const err = lane - off;
-        // aim a little ahead along the road, offset toward the lane
-        const tx = dx * 8 + lx * err * 0.6, tz = dz * 8 + lz * err * 0.6;
-        const want = Math.atan2(tx, tz);
+        // aim at the left lane a little way ahead along the road (further at speed, so it follows bends and
+        // doesn't weave): the road's centre there, shifted into the lane
+        const look = 7 + spd * 0.45;
+        let want = null;
+        const ra = this.road(this.pos.x + dx * look, this.pos.z + dz * look);
+        if (ra && ra.dist < ra.half + 8) {
+          let ax = ra.dx, az = ra.dz;
+          if (ax * dx + az * dz < 0) { ax = -ax; az = -az; }
+          const lane = ra.lanes >= 2 && !ra.oneway ? ra.half / 2 : 0;
+          const px = ra.x + az * lane, pz = ra.z - ax * lane; // left of travel is (az, -ax)
+          want = Math.atan2(px - this.pos.x, pz - this.pos.z);
+        } else {
+          const lane = r.lanes >= 2 && !r.oneway ? r.half / 2 : 0;
+          const lx = dz, lz = -dx;
+          const err = lane - ((this.pos.x - r.x) * lx + (this.pos.z - r.z) * lz);
+          want = Math.atan2(dx * look + lx * err, dz * look + lz * err);
+        }
         let dh = want - this.heading; dh = Math.atan2(Math.sin(dh), Math.cos(dh));
         yaw += dh * p.assistYaw * Math.min(1, spd / 6);
-      }
-    }
+      } else steady = true;
+    } else if (Math.abs(input.steer) < 0.05) steady = true;
+    // wheel centred and nothing to line up with (a junction, the verge, the drive): keep going straight
+    if (steady) yaw *= Math.exp(-p.holdStraight * 0.5); // most of any leftover turn goes at once
     this.yawRate += (yaw - this.yawRate) * Math.min(1, dt * 9);
     this.heading += this.yawRate * dt;
     const nfx = Math.sin(this.heading), nfz = Math.cos(this.heading);

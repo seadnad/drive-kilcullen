@@ -104,6 +104,45 @@ export class UI {
     window.addEventListener('blur', () => { this.input.go = this.input.stop = this.input.left = this.input.right = false; });
   }
 
+  // ---- game controllers (Xbox / PlayStation / most Bluetooth pads, standard mapping), polled every frame.
+  // Driving: left stick or D-pad steers, RT / R2 or A / Cross drives, LT / L2 or B / Circle brakes and reverses.
+  // Y / Triangle siren, X / Square horn, LB / L1 camera, RB / R1 or D-pad up back on the road, Menu / View where to.
+  // With the destination picker open: stick or D-pad moves between places, A picks, B closes.
+  pollPad(dt) {
+    this.pad = { steer: 0, go: 0, stop: 0 };
+    const g = navigator.getGamepads ? [...navigator.getGamepads()].find((p) => p && p.connected) : null;
+    if (!g) return;
+    const b = (i) => (g.buttons[i] ? g.buttons[i].value || (g.buttons[i].pressed ? 1 : 0) : 0);
+    const prev = this._padPrev || [];
+    const pressed = (i) => b(i) > 0.5 && !prev[i];
+    const dead = (v, d = 0.15) => (Math.abs(v) < d ? 0 : Math.sign(v) * (Math.abs(v) - d) / (1 - d));
+    const sx = dead(g.axes[0] || 0), sy = dead(g.axes[1] || 0, 0.5);
+    if (g.buttons.some((x) => x.pressed) || Math.abs(sx) > 0.3) this.emit('wake');
+    const menu = !this.picker.hidden ? this.picker : null;
+    if (menu) {
+      const cards = [...menu.querySelectorAll('.card')];
+      const i = cards.indexOf(document.activeElement);
+      const step = (d) => { const n = cards[(Math.max(0, i) + d + cards.length) % cards.length]; n.focus(); n.scrollIntoView({ block: 'nearest' }); };
+      this._stickHeld = Math.max(0, (this._stickHeld || 0) - dt);
+      const dir = pressed(15) || pressed(13) ? 1 : pressed(14) || pressed(12) ? -1 : (sx || sy) && !this._stickHeld ? Math.sign(sx || sy) : 0;
+      if (dir) { step(dir); if (!pressed(12) && !pressed(13) && !pressed(14) && !pressed(15)) this._stickHeld = 0.25; }
+      if (!sx && !sy) this._stickHeld = 0;
+      if (pressed(0) && i >= 0) cards[i].click();
+      if (pressed(1)) this.hidePicker();
+    } else {
+      const dpad = (b(15) > 0.5 ? 1 : 0) - (b(14) > 0.5 ? 1 : 0);
+      this.pad.steer = dpad || Math.sign(sx) * Math.pow(Math.abs(sx), 1.3);
+      this.pad.go = Math.max(b(7), b(0));
+      this.pad.stop = Math.max(b(6), b(1));
+      if (pressed(3)) this.emit('siren');
+      if (pressed(2)) this.emit('horn');
+      if (pressed(4)) this.emit('camera');
+      if (pressed(5) || pressed(12)) this.emit('reset');
+      if (pressed(9) || pressed(8)) this.showPicker();
+    }
+    this._padPrev = g.buttons.map((x, k) => b(k) > 0.5);
+  }
+
   on(ev, fn) { (this.handlers[ev] ||= []).push(fn); }
   emit(ev, arg) { for (const fn of this.handlers[ev] || []) fn(arg); }
   flash(el) { el.classList.add('held'); setTimeout(() => el.classList.remove('held'), 150); }

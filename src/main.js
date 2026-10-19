@@ -213,10 +213,12 @@ function step(dt) {
   const pickerOpen = !ui.picker.hidden || !ui.party.hidden;
 
   // ---- drive
+  if (!simming) ui.pollPad(dt);
+  const pad = ui.pad || { steer: 0, go: 0, stop: 0 };
   const input = {
-    throttle: !pickerOpen && ui.input.go && !arriving ? 1 : 0,
-    brake: ui.input.stop || arriving ? 1 : 0,
-    steer: pickerOpen ? 0 : (ui.input.right ? 1 : 0) - (ui.input.left ? 1 : 0),
+    throttle: !pickerOpen && !arriving ? Math.max(ui.input.go ? 1 : 0, pad.go) : 0,
+    brake: arriving ? 1 : Math.max(ui.input.stop ? 1 : 0, pad.stop),
+    steer: pickerOpen ? 0 : (ui.input.right ? 1 : 0) - (ui.input.left ? 1 : 0) || pad.steer,
   };
   car.update(dt, input);
   me.vis.x = car.pos.x; me.vis.z = car.pos.z; me.vis.h = car.heading; me.v = Math.max(0, car.speed);
@@ -279,7 +281,7 @@ function step(dt) {
   if (car.speed > -0.5) { let dh = car.heading - camHeading; dh = Math.atan2(Math.sin(dh), Math.cos(dh)); camHeading += dh * Math.min(1, dt * 3.5); }
   const fx = Math.sin(camHeading), fz = Math.cos(camHeading);
   const portrait = camera.aspect < 1;
-  const [back, up, look] = camMode === 0 ? [portrait ? 12 : 9.5, portrait ? 5.2 : 4, 5] : camMode === 1 ? [22, 14, 10] : [3, 50, 0.1];
+  const [back, up, look] = camMode === 0 ? [portrait ? 9 : 7, portrait ? 3.9 : 3, 5] : camMode === 1 ? [22, 14, 10] : [3, 50, 0.1];
   const want = new THREE.Vector3(car.pos.x - fx * back, car.y + up, car.pos.z - fz * back);
   // never under the ground (the dip) or too low
   want.y = Math.max(want.y, groundY(want.x, want.z) + 2);

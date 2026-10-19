@@ -33,6 +33,10 @@ puts the car back in the middle of the road.
 | `V` | 🔊 | sound on or off |
 | `M` / `Enter` | 🗺️ Where to? | choose where to go |
 
+A game controller works too (Xbox, PlayStation and most Bluetooth pads): left stick or D-pad to steer, RT / R2 or
+A / Cross to drive, LT / L2 or B / Circle to brake and reverse, Y / Triangle siren, X / Square horn, LB / L1 camera,
+RB / R1 or D-pad up back on the road, Menu to choose where to go (stick to move, A to pick, B to close).
+
 Places to drive to: Home, Kidz Akademy, the GAA club, Little Brew, An Tearmann, the playground, the Town Hall,
 Kilashee and Naas. Main Street also has signs on The Hideout, The Spout, Bardon's, Eurospar, An Post, the Garda
 station, the library, the credit union, River Cafe, O'Connell's, McTernan's, Brennan's Hardware, Woodbine Books,
